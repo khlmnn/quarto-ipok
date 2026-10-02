@@ -163,3 +163,8 @@ update (see also the update checklist in the ete335-test repository, `quarto-liv
 | Pyodide | 314.0.2 (with `pyodide-pytorch` 2.13.0) |
 | MSAL.js | 4.13.2 (`@azure/msal-browser`, bundled; MIT, see `_extensions/ipok/msal-browser.LICENSE`) |
 | Browsers | Chromium (headless, scripted tests); Safari (used manually on the deployed test site) |
+
+## License
+
+MIT, see [`LICENSE`](LICENSE). The bundled MSAL.js (`_extensions/ipok/msal-browser.min.js`) is
+© Microsoft Corporation, also MIT; see `_extensions/ipok/msal-browser.LICENSE`.
