@@ -22,9 +22,10 @@ Used by the ETE335 test site, https://liu-nlp.ai/ete335-test/
 - The site's origin (e.g. `https://liu-nlp.ai`) allowed for CORS on the Progress API.
   For the IPOK test API this is Azure App Service's CORS setting, not only the app's
   `AllowedOrigins`.
-- For code exercises: quarto-live. With PyTorch / Pyodide 314, this has to be the adapted
-  build described in the ete335-test repository (`quarto-live/`); stock quarto-live works
-  with its default Pyodide.
+- For code exercises: quarto-live. With PyTorch / Pyodide 314, use the fork
+  [`khlmnn/quarto-live`](https://github.com/khlmnn/quarto-live)
+  (`quarto add khlmnn/quarto-live@v0.2.0-dev.khlmnn.1`); stock quarto-live works with its
+  default Pyodide.
 
 ## Installation
 
@@ -140,7 +141,8 @@ stored data. `exerciseData` is the text box content as is.
 ## What ipok relies on in quarto-live
 
 Code exercises use undocumented quarto-live internals. Check these after any quarto-live
-update (see also the update checklist in the ete335-test repository, `quarto-live/README.md`).
+update (the fork's [`FORK.md`](https://github.com/khlmnn/quarto-live/blob/main/FORK.md) has
+the full checklist).
 
 | # | Dependency | Used for | Where in quarto-live |
 |---|---|---|---|
@@ -159,7 +161,7 @@ update (see also the update checklist in the ete335-test repository, `quarto-liv
 | | |
 |---|---|
 | Quarto | 1.10.18 |
-| quarto-live | upstream `12fb30a` plus the ete335-test patches (Pyodide 314.0.2 pin, button keydown fix) |
+| quarto-live | fork `khlmnn/quarto-live` `v0.2.0-dev.khlmnn.1` (upstream `12fb30a` plus Pyodide 314.0.2 pin and button keydown fix) |
 | Pyodide | 314.0.2 (with `pyodide-pytorch` 2.13.0) |
 | MSAL.js | 4.13.2 (`@azure/msal-browser`, bundled; MIT, see `_extensions/ipok/msal-browser.LICENSE`) |
 | Browsers | Chromium (headless, scripted tests); Safari (used manually on the deployed test site) |
