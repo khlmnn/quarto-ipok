@@ -10,6 +10,8 @@ page.
   and both are restored on the next visit, as if the cell had been run.
 - **Plain exercises:** other exercises get a text box with a save button; this is mainly
   for testing the API.
+- **Checked questions:** multiple-choice, number and text questions, checked in the
+  browser, whose variant (numbers, options, data slice) depends on a per-student seed.
 
 Used by the ETE335 test site, https://liu-nlp.ai/ete335-test/
 ([source](https://github.com/liu-nlp/ete335-test)).
@@ -127,6 +129,126 @@ stored markup.
 A text box pre-filled with sample JSON, a **Save (PUT)** and a **Delete** button, and the
 stored data. `exerciseData` is the text box content as is.
 
+## Checked questions
+
+A question is a fenced div with class `question`, an `id` and a `type`: `mcq`
+(multiple choice, one right option), `number` or `text`. It holds the question text and
+a table of **variants**; which variant a student sees depends on a per-student seed, so
+that students cannot copy answers from each other. Answers are checked in the browser.
+
+````markdown
+::: {.question id="q-sum" type="number"}
+Hur mycket är {{a}} + {{b}}? Som formel: $\frac{{{a}}}{2}$.
+
+```{.variants}
+[
+  {"id": "v01", "a": 2, "b": 3, "answer": 5},
+  {"id": "v02", "a": 4, "b": 5, "answer": 9}
+]
+```
+:::
+
+::: {.question id="q-larger" type="mcq"}
+Vilket tal är störst?
+
+```{.variants}
+[{"id": "v01", "options": ["1", "2", "3"], "answer": "3"},
+ {"id": "v02", "options": ["\\(\\frac{1}{2}\\)", "\\(\\frac{1}{3}\\)"], "answer": "\\(\\frac{1}{2}\\)"}]
+```
+:::
+
+::: {.question id="q-count" type="number" variants="q-count.json"}
+Hur många berättelser i del {{part}} handlar om {{character}}?
+:::
+````
+
+### Variants
+
+- The table is a JSON array, either in a `{.variants}` code block inside the div or in a
+  file named by `variants="…"` (relative to the page). JSON rather than YAML, because
+  Pandoc reads YAML values as Markdown (`a*b*c` would become `abc`), and Quarto's Lua has
+  no other YAML parser.
+- Each variant is an object with a unique string `id`, an `answer`, and one value for
+  each placeholder. An `mcq` variant also has `options`, a list of strings of which
+  `answer` is one; they are shown in an order shuffled per student and attempt.
+- `{{name}}` in the question text is replaced by the variant's value for `name`, as plain
+  text, also inside math and code. Values are strings, numbers or booleans; numbers are
+  shown as JSON writes them (`2.5`), so give a string (`"2,5"`) for Swedish formatting.
+  Option texts may contain math as `\(…\)`.
+- Answers: a number for `number` questions, a string otherwise.
+
+The build fails on invalid JSON, a missing or duplicate variant id, a placeholder without
+a value in some variant, a variant field that is not a placeholder (apart from `id`,
+`answer`, `options`), a wrong answer type, an `mcq` answer that is not among the options,
+or a question id that is also used by an exercise or question on the same page. It warns
+when an `mcq` question has fewer than 3 variants or a `number`/`text` question fewer than
+10; a question with a single variant is a plain fixed question and gives no warning.
+
+### Checking
+
+| Type | Accepted |
+|---|---|
+| `number` | `,` or `.` as decimal separator, spaces anywhere (`1 000`); compared exactly with `answer`. `tolerance="0.01"` accepts answers within that distance; `decimals="2"` rounds both sides to 2 decimals first. |
+| `text` | leading, trailing and repeated whitespace ignored, Unicode NFC; case-sensitive unless the div has class `.ignore-case`. |
+| `mcq` | the chosen option. |
+
+Input that is not an answer (empty, or not a number) gives a hint and does not count as an
+attempt. Answers are never revealed. A solved question stays solved and is shown
+read-only with the student's answer. Attempts are unlimited.
+
+### Which variant
+
+- Every student has a **seed**, an integer 0 … 2³²−1. For each question, the variants are
+  ordered by a hash of (seed, question id, variant id); adding a variant to a table
+  changes only the students whose order it lands in front of.
+- A `number` or `text` question always shows the first variant in that order, so a
+  student who fixes their code keeps working on their own data.
+- An `mcq` question shows variant *k* mod *n* after *k* wrong answers: a wrong answer
+  shows "Fel." and a "Ny fråga" button, and the next variant cannot be guessed through
+  the options.
+- The variant is recomputed from the seed each time; the saved record only notes it.
+
+### Stored data
+
+Each question is an ordinary record, under `(course-instance, module-id, section-id, id)`,
+written on every attempt (so the API's shadow table keeps the history):
+
+```json
+{"attempt": 1, "variant": "v03", "solved": true,
+ "answers": [{"variant": "v02", "answer": "4", "correct": false},
+             {"variant": "v03", "answer": "6", "correct": true}]}
+```
+
+The seed is the record `(course-instance, "_ipok", "_ipok", "seed")` = `{"seed": <n>}`.
+At a student's first sign-in it is created as the first 4 bytes (big-endian) of
+SHA-256(`<course-instance>:<localAccountId>`), so two tabs creating it at the same time
+write the same value. `module-id: _ipok` is therefore reserved.
+
+Signed-out visitors can answer questions with a random seed kept in `localStorage`;
+nothing is saved, and the questions say "Logga in för att spara dina svar". After
+signing in they see the variants of their stored seed.
+
+Interface texts follow the page's `lang` (Swedish and English built in, English
+otherwise).
+
+### Debug panel
+
+Add `?ipok-debug` to a page's URL. The panel is shown to signed-in users whose access
+token has the `Teacher` role, and to anyone signed out on `localhost` (`quarto preview`,
+where sign-in does not work; only the local seed is involved there).
+
+- **Seed:** the current seed. *Läs* reads it from the database, *Spara* writes the
+  field's value, *Återställ härledd* writes the seed derived from the account (signed
+  out: *Ny slumpad*, a new random local seed). Changing the seed shows the new variants
+  at once.
+- **Per question:** the variant id and its place in the student's order, the attempt
+  count, whether it is solved, and the right answer. *Nästa variant* moves an `mcq`
+  question on by one attempt (saved); for `number` and `text` questions, whose variant
+  does not depend on the attempt, it is a local offset that is not saved. *Återställ*
+  deletes the question's record.
+- **Visa alla varianter** lists every question's table in the student's order, to
+  proof-read generated tables.
+
 ## Notes
 
 - **Token storage.** MSAL keeps its cache in `sessionStorage` (per tab, cleared when it
@@ -134,7 +256,7 @@ stored data. `exerciseData` is the text box content as is.
   it, so student code (or course content) can run JavaScript next to that cache. The
   Progress API only lets a token act on its own user's data.
 - **Caching.** The dependency folder is named after a hash of `ipok.js` and `ipok.css`
-  (`ipok-0.1.0-<hash>`), so browsers never keep running an old script after an update,
+  (`ipok-<version>-<hash>`), so browsers never keep running an old script after an update,
   even on hosts that cache files (GitHub Pages: 10 minutes).
 - **Filter order** with quarto-live doesn't matter.
 
@@ -160,11 +282,25 @@ the full checklist).
 
 | | |
 |---|---|
-| Quarto | 1.10.18 |
+| Quarto | 1.10.18; checked questions: 1.10.19 (Pandoc 3.10) |
 | quarto-live | fork `khlmnn/quarto-live` `v0.2.0-dev.khlmnn.1` (upstream `12fb30a` plus Pyodide 314.0.2 pin and button keydown fix) |
 | Pyodide | 314.0.2 (with `pyodide-pytorch` 2.13.0) |
 | MSAL.js | 4.13.2 (`@azure/msal-browser`, bundled; MIT, see `_extensions/ipok/msal-browser.LICENSE`) |
 | Browsers | Chromium (headless, scripted tests); Safari (used manually on the deployed test site) |
+
+## Tests
+
+`tests/run.mjs` renders the fixture site `tests/site/` with the current extension, serves
+it with a mock Progress API, and drives it in headless Chromium (Playwright), signed out
+and, with a stand-in for MSAL, signed in as a student and as a teacher. It also checks
+the filter's build errors.
+
+```bash
+cd tests && npm install && npm test   # or: node run.mjs errors
+```
+
+The Playwright version is pinned to one whose Chromium is installed
+(`npx playwright install chromium` otherwise).
 
 ## License
 
