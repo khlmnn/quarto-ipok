@@ -1,0 +1,23 @@
+project:
+  type: website
+
+website:
+  title: "ipok tests"
+
+format:
+  html:
+    toc: false
+
+lang: sv
+
+filters:
+  - ipok
+
+# Test values: the API is mocked by the tests (tests/run.mjs).
+ipok:
+  client-id: 00000000-0000-0000-0000-000000000001
+  tenant-id: 00000000-0000-0000-0000-000000000002
+  redirect-uri: http://localhost:4173/
+  api-base: http://localhost:4173/mock-api
+  scope: api://ipok-test/user_impersonation
+  course-instance: ipok-test

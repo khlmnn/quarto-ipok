@@ -1,0 +1,60 @@
+---
+title: Questions
+module-id: test-module
+section-id: questions
+---
+
+::: {.question id="q-number" type="number"}
+Hur mycket är {{a}} + {{b}}? Som formel: $\frac{{{a}}}{1} + {{b}}$.
+
+```{.variants}
+[
+  {"id": "v01", "a": 2, "b": 3, "answer": 5},
+  {"id": "v02", "a": 4, "b": 5, "answer": 9},
+  {"id": "v03", "a": 1.5, "b": 1, "answer": 2.5}
+]
+```
+:::
+
+::: {.question id="q-decimals" type="number" decimals="2"}
+Vad är {{x}} / 3, avrundat till 2 decimaler?
+
+```{.variants}
+[{"id": "v01", "x": 1, "answer": 0.3333333}]
+```
+:::
+
+::: {.question id="q-text" type="text"}
+Skriv ordet *{{word}}* baklänges.
+
+```{.variants}
+[{"id": "v01", "word": "katt", "answer": "ttak"},
+ {"id": "v02", "word": "hund", "answer": "dnuh"}]
+```
+:::
+
+::: {.question .ignore-case id="q-case" type="text"}
+Skriv namnet {{name}}.
+
+```{.variants}
+[{"id": "v01", "name": "Elsa", "answer": "Elsa"}]
+```
+:::
+
+::: {.question id="q-mcq" type="mcq"}
+Vilket tal är störst?
+
+```{.variants}
+[{"id": "v01", "options": ["1", "2", "3"], "answer": "3"},
+ {"id": "v02", "options": ["4", "6", "5"], "answer": "6"},
+ {"id": "v03", "options": ["\\(\\frac{1}{2}\\)", "\\(\\frac{1}{3}\\)"], "answer": "\\(\\frac{1}{2}\\)"}]
+```
+:::
+
+::: {.question id="q-file" type="number" variants="questions-q-file.json"}
+Hur många berättelser finns i del {{part}}?
+:::
+
+::: {.exercise id="ex-plain"}
+A plain exercise next to the questions.
+:::
