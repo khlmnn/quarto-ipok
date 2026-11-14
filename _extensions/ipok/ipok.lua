@@ -18,7 +18,7 @@
 --   ```
 --   :::
 
-local VERSION = "0.2.0"
+local VERSION = "0.2.1"
 
 local SITE_KEYS = {
   { "client-id", "clientId" },

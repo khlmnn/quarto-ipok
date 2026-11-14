@@ -24,6 +24,14 @@ Vad är {{x}} / 3, avrundat till 2 decimaler?
 ```
 :::
 
+::: {.question id="q-half" type="number" decimals="2"}
+Vad är 9 / 200, avrundat till 2 decimaler?
+
+```{.variants}
+[{"id": "v01", "answer": 0.045}]
+```
+:::
+
 ::: {.question id="q-text" type="text"}
 Skriv ordet *{{word}}* baklänges.
 
@@ -53,6 +61,11 @@ Vilket tal är störst?
 
 ::: {.question id="q-file" type="number" variants="questions-q-file.json"}
 Hur många berättelser finns i del {{part}}?
+
+```python
+stories = load_stories(part={{part}})
+print("{{part}}", f"{x}", len(stories))
+```
 :::
 
 ::: {.exercise id="ex-plain"}

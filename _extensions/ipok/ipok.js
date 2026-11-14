@@ -436,6 +436,14 @@
     return Number(x.replace(",", "."));
   }
 
+  // Rounds half away from zero on the decimal digits as written, as by hand:
+  // 0.045 -> 0.05 (toFixed works on the binary value 0.04499… and gives 0.04).
+  function roundHalfUp(n, decimals) {
+    const s = String(Math.abs(n));
+    if (/e/i.test(s)) return Number(n.toFixed(decimals)); // tiny or huge: no half to decide
+    return Math.sign(n) * Number(Math.round(Number(`${s}e${decimals}`)) + `e-${decimals}`);
+  }
+
   const normalizeText = (s, ignoreCase) => {
     const x = s.normalize("NFC").trim().replace(/\s+/g, " ");
     return ignoreCase ? x.toLocaleLowerCase(cfg.lang) : x;
@@ -453,10 +461,7 @@
     }
     const x = parseNumber(value);
     if (x === null) return { ok: false, hint: t("notANumber") };
-    if (q.decimals != null) {
-      const r = (n) => Number(n.toFixed(q.decimals));
-      return { ok: true, correct: r(x) === r(v.answer) };
-    }
+    if (q.decimals != null) return { ok: true, correct: roundHalfUp(x, q.decimals) === roundHalfUp(v.answer, q.decimals) };
     if (q.tolerance != null) return { ok: true, correct: Math.abs(x - v.answer) <= q.tolerance + 1e-12 };
     return { ok: true, correct: x === v.answer };
   }
@@ -556,14 +561,35 @@
     typeset(node);
   }
 
-  // The question text with {{placeholders}} filled in, as text only.
+  // The question text with {{placeholders}} filled in, as text only. A
+  // placeholder may span several text nodes: syntax highlighting splits
+  // "{{name}}" in a Python string into "{", "{name}", "}" spans. The value goes
+  // into the first node, and the rest of the placeholder is cut from the others.
   function questionText(q, v) {
     const frag = q.template.content.cloneNode(true);
     const walker = document.createTreeWalker(frag, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    const starts = []; // offset of each node in the concatenated text
+    let text = "";
     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-      if (n.data.includes("{{")) {
-        n.data = n.data.replace(/\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g, (m, name) => (name in v ? String(v[name]) : m));
-      }
+      nodes.push(n);
+      starts.push(text.length);
+      text += n.data;
+    }
+    const nodeAt = (offset) => { // last node starting at or before offset
+      let i = 0;
+      while (i + 1 < nodes.length && starts[i + 1] <= offset) i++;
+      return i;
+    };
+    const matches = [...text.matchAll(/\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g)].filter((m) => m[1] in v);
+    for (const m of matches.reverse()) { // from the end, so earlier offsets stay valid
+      const begin = m.index, end = m.index + m[0].length;
+      const first = nodeAt(begin), last = nodeAt(end - 1);
+      const a = nodes[first], b = nodes[last];
+      const tail = b.data.slice(end - starts[last]);
+      for (let i = first + 1; i < last; i++) nodes[i].data = "";
+      if (last !== first) b.data = tail;
+      a.data = a.data.slice(0, begin - starts[first]) + String(v[m[1]]) + (last === first ? tail : "");
     }
     return frag;
   }

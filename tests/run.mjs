@@ -200,6 +200,9 @@ async function testSignedOut(browser) {
   const { page, context, errors } = await openPage(browser, { seed: 42 });
   const text = await page.locator("main").textContent();
   ok(!text.includes("{{"), "no unfilled placeholders");
+  const code = await Q(page, "q-file").locator("pre code").textContent();
+  ok(/load_stories\(part=(\d+)\)\nprint\("\1", f"\{x\}", len\(stories\)\)/.test(code), "placeholders in highlighted code, also inside strings", code);
+  ok(await Q(page, "q-file").locator("pre code span").count() > 3, "code keeps its highlighting");
   ok(await Q(page, "q-number").locator(".ipok-question-note").isVisible(), "sign-in note is shown");
   ok(!(await page.locator(".ipok-debug-panel").count()), "no debug panel without ?ipok-debug");
   await page.waitForFunction(() => document.querySelector('[data-question-id="q-number"] mjx-container'), null, { timeout: 15000 })
@@ -216,6 +219,11 @@ async function testSignedOut(browser) {
   await answer(page, "q-decimals", " 0,333 ");
   eq(await status(page, "q-decimals"), "Rätt!", "decimals=2 accepts 0,333 for 0.3333333");
   ok(await Q(page, "q-decimals").locator("input.ipok-answer").isDisabled(), "solved question is read-only");
+
+  await answer(page, "q-half", "0,04");
+  eq(await status(page, "q-half"), "Fel, försök igen.", "decimals=2: 0.045 does not round to 0.04");
+  await answer(page, "q-half", "0,05");
+  eq(await status(page, "q-half"), "Rätt!", "decimals=2: 0.045 rounds half up to 0.05");
 
   await answer(page, "q-case", "  ELSA ");
   eq(await status(page, "q-case"), "Rätt!", "ignore-case and whitespace");

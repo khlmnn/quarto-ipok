@@ -188,7 +188,7 @@ when an `mcq` question has fewer than 3 variants or a `number`/`text` question f
 
 | Type | Accepted |
 |---|---|
-| `number` | `,` or `.` as decimal separator, spaces anywhere (`1 000`); compared exactly with `answer`. `tolerance="0.01"` accepts answers within that distance; `decimals="2"` rounds both sides to 2 decimals first. |
+| `number` | `,` or `.` as decimal separator, spaces anywhere (`1 000`); compared exactly with `answer`. `tolerance="0.01"` accepts answers within that distance; `decimals="2"` rounds both sides to 2 decimals first, half away from zero on the digits as written (0.045 → 0.05, as by hand). |
 | `text` | leading, trailing and repeated whitespace ignored, Unicode NFC; case-sensitive unless the div has class `.ignore-case`. |
 | `mcq` | the chosen option. |
 
