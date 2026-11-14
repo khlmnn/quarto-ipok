@@ -4,3 +4,4 @@ tests/site/_site/
 tests/site/.quarto/
 tests/bad/
 .luarc.json
+tests/site/.gitignore

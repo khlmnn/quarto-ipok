@@ -302,6 +302,17 @@ cd tests && npm install && npm test   # or: node run.mjs errors
 The Playwright version is pinned to one whose Chromium is installed
 (`npx playwright install chromium` otherwise).
 
+`tests/check-site.mjs` checks the questions of any rendered site that uses ipok, e.g. a
+course site after new variant tables: it serves the site's `_site/` on localhost, opens
+every page with questions with `?ipok-debug` (signed out, so nothing is saved), enters the
+debug panel's answer for every variant of every question and expects it to be accepted,
+and fails on unfilled placeholders and console errors. It checks that tables, rendering
+and checking fit together, not that the answers themselves are right.
+
+```bash
+cd tests && node check-site.mjs ../../ete335 [page.html …] [--screenshots <dir>]
+```
+
 ## License
 
 MIT, see [`LICENSE`](LICENSE). The bundled MSAL.js (`_extensions/ipok/msal-browser.min.js`) is
