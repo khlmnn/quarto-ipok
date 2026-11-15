@@ -4,3 +4,11 @@ title: Min sida
 
 ::: {.ipok-progress}
 :::
+
+::: {.ipok-gate}
+All questions solved.
+:::
+
+::: {.ipok-gate-closed}
+Not done yet.
+:::

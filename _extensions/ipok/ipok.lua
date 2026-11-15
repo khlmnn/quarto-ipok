@@ -22,7 +22,7 @@
 --   ::: {.ipok-progress}
 --   :::
 
-local VERSION = "0.3.0"
+local VERSION = "0.4.0"
 
 local SITE_KEYS = {
   { "client-id", "clientId" },
@@ -346,6 +346,13 @@ function Pandoc(doc)
       if el.classes:includes("ipok-progress") then
         config.progress = config.progress or progress_pages()
         return nil
+      end
+      -- Hidden until ipok.js has checked whether the student has solved
+      -- every question on the site (.ipok-gate) or not (.ipok-gate-closed).
+      if el.classes:includes("ipok-gate") or el.classes:includes("ipok-gate-closed") then
+        config.progress = config.progress or progress_pages()
+        el.attributes["hidden"] = ""
+        return el
       end
       local id = div_id(el)
       if el.classes:includes("question") then

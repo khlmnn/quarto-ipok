@@ -287,6 +287,31 @@ is.
 - **Requests.** One `GET` per section, all at the same time; a section that cannot be
   loaded is marked in its row, and the others are still shown.
 
+### Gate
+
+An `ipok-gate` div is shown only to a signed-in student who has solved every question on
+the site, for example to link to the registration for an exam; an `ipok-gate-closed` div
+only to a signed-in student who has not:
+
+```markdown
+::: {.ipok-gate}
+Du har besvarat alla kontrollfrågor rätt. [Anmäl dig till examinationen](https://…).
+:::
+
+::: {.ipok-gate-closed}
+När du har besvarat alla kontrollfrågor rätt kan du anmäla dig till examinationen här.
+:::
+```
+
+Both are rendered with the `hidden` attribute. Once all sections have loaded, the gate is
+shown if *x* = *y* in the total row and the site has questions, and the closed gate
+otherwise. Signed out, or if a section cannot be loaded, both stay hidden. They work with
+or without an `ipok-progress` div on the same page, and count the same pages and
+questions. Like everything on a static site, the content is in
+the page's HTML and can be read in its source: the gate keeps students from following a
+link before they are done, but it is not access control, and whoever receives the
+registrations should check them against the stored progress.
+
 ## Notes
 
 - **Token storage.** MSAL keeps its cache in `sessionStorage` (per tab, cleared when it

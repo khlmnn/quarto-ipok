@@ -857,11 +857,14 @@
   // A `.ipok-progress` div gets a table of the site's pages with questions
   // (listed by ipok.lua when the page is rendered) and, for each, how many of
   // its questions the student has solved. Only questions still on a page
-  // count. One GET per section, all at once.
+  // count. One GET per section, all at once. Once every section has loaded,
+  // a `.ipok-gate` div (hidden by ipok.lua) is shown if every question is
+  // solved, and a `.ipok-gate-closed` div if not.
 
   async function initProgress() {
     const boxes = [...document.querySelectorAll(".ipok-progress")];
-    if (!boxes.length) return;
+    const gates = [...document.querySelectorAll(".ipok-gate, .ipok-gate-closed")];
+    if (!boxes.length && !gates.length) return;
     const pages = Array.isArray(cfg.progress) ? cfg.progress : [];
     const show = (...children) => { for (const b of boxes) b.replaceChildren(...children.map((c) => c.cloneNode(true))); };
     if (!account()) { show(el("p", { class: "ipok-question-note", text: t("pSignIn") })); return; }
@@ -881,13 +884,14 @@
       }
     })));
 
-    let total = 0, done = 0;
+    let total = 0, done = 0, failed = 0;
     const row = (cells, tag = "td") => el("tr", {}, cells.map((c) => (typeof c === "string" ? el(tag, { text: c }) : el(tag, {}, [c]))));
     const rows = pages.map((p) => {
       const s = solved.get(key(p));
       const n = p.questions.length;
       const x = s ? p.questions.filter((id) => s.has(id)).length : 0;
       total += n; done += x;
+      if (!s) failed++;
       const tr = row([el("a", { href: p.href, text: p.title }), s ? `${x} / ${n}` : t("pLoadFailed")]);
       tr.dataset.section = `${p.module}/${p.section}`;
       if (!s) tr.lastChild.className = "ipok-status err";
@@ -899,6 +903,10 @@
       el("tbody", {}, rows),
       el("tfoot", {}, [row([t("pTotal"), `${done} / ${total}`], "th")]),
     ]));
+    if (failed === 0) {
+      const passed = total > 0 && done === total;
+      for (const g of gates) g.hidden = g.classList.contains("ipok-gate") !== passed;
+    }
   }
 
   // ---- Load / save / delete ---------------------------------------------

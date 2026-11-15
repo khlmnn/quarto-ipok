@@ -377,6 +377,8 @@ async function testProgress(browser) {
   let { page, context, errors } = await openPage(browser, { path: "progress.html" });
   eq((await page.locator(".ipok-progress").textContent()).trim(), "Logga in för att se dina framsteg.", "signed out: sign-in note");
   eq(await page.locator(".ipok-progress-link").count(), 0, "signed out: no navbar link");
+  ok(await page.locator(".ipok-gate").isHidden(), "signed out: gate hidden");
+  ok(await page.locator(".ipok-gate-closed").isHidden(), "signed out: closed gate hidden");
   ok(errors.length === 0, "no console errors", errors.join("; "));
   await context.close();
 
@@ -395,6 +397,19 @@ async function testProgress(browser) {
     "one row per page with questions, in path order, counting only solved questions on the page");
   eq(await page.locator(".ipok-progress-table tfoot").textContent(), "Totalt2 / 8", "total row");
   ok(await page.locator('.ipok-progress-table tr[data-section="test-module/more"] td:last-child.ok').count() === 1, "a finished page is marked");
+  ok(await page.locator(".ipok-gate").isHidden(), "some questions unsolved: gate hidden");
+  ok(await page.locator(".ipok-gate-closed").isVisible(), "some questions unsolved: closed gate shown");
+  ok(errors.length === 0, "no console errors", errors.join("; "));
+  await context.close();
+
+  // Every question solved: the gate opens.
+  for (const id of ["q-number", "q-decimals", "q-half", "q-text", "q-case", "q-mcq", "q-file"])
+    put("questions", id, { attempt: 0, variant: "v01", solved: true, answers: [] });
+  ({ page, context, errors } = await openPage(browser, { roles: ["Student"], path: "progress.html" }));
+  await page.waitForSelector(".ipok-progress-table");
+  eq(await page.locator(".ipok-progress-table tfoot").textContent(), "Totalt8 / 8", "all solved: total row");
+  ok(await page.locator(".ipok-gate").isVisible(), "all solved: gate shown");
+  ok(await page.locator(".ipok-gate-closed").isHidden(), "all solved: closed gate hidden");
   ok(errors.length === 0, "no console errors", errors.join("; "));
   await context.close();
 
@@ -412,7 +427,9 @@ async function testProgress(browser) {
   }));
   await page.waitForSelector(".ipok-progress-table");
   eq(await page.locator('.ipok-progress-table tr[data-section="test-module/more"] td:last-child').textContent(), "kunde inte laddas", "failed section is marked");
-  eq(await page.locator('.ipok-progress-table tr[data-section="test-module/questions"] td:last-child').textContent(), "1 / 7", "other sections still shown");
+  eq(await page.locator('.ipok-progress-table tr[data-section="test-module/questions"] td:last-child').textContent(), "7 / 7", "other sections still shown");
+  ok(await page.locator(".ipok-gate").isHidden(), "a section failed: gate hidden");
+  ok(await page.locator(".ipok-gate-closed").isHidden(), "a section failed: closed gate hidden");
   await context.close();
 }
 
