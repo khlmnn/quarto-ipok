@@ -853,11 +853,23 @@
   }
 
   // `.ipok-name` spans (the ipok-name shortcode) get the signed-in user's
-  // name; signed out, they keep their content.
+  // name; signed out, they keep their content. With data-part="first", only
+  // the first name: the given_name claim if the ID token has it, otherwise
+  // the part after the comma of "Last, First", or the first word.
+  function firstName(a) {
+    const given = a.idTokenClaims?.given_name;
+    if (given) return given;
+    const name = (a.name || "").trim();
+    if (!name) return a.username;
+    if (name.includes(",")) return name.split(",")[1].trim().split(/\s+/)[0] || name;
+    return name.split(/\s+/)[0];
+  }
+
   function renderNames() {
     const a = account();
     if (!a) return;
-    for (const s of document.querySelectorAll(".ipok-name")) s.textContent = a.name || a.username;
+    for (const s of document.querySelectorAll(".ipok-name"))
+      s.textContent = s.dataset.part === "first" ? firstName(a) : a.name || a.username;
   }
 
   // ---- Progress page ------------------------------------------------------

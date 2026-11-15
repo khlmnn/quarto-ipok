@@ -319,6 +319,11 @@ Entra ID, e.g. "Anna Andersson"), on any page and inside text: `Hej, {{< ipok-na
 Signed out, it shows nothing, or its argument: `{{< ipok-name "du" >}}`. It renders as a
 `<span class="ipok-name">`, so `[du]{.ipok-name}` works too.
 
+With `part="first"`, it shows only the first name: `Hej, {{< ipok-name "du" part="first"
+>}}!`. That is the `given_name` claim of the ID token if the app registration includes it
+as an optional claim; otherwise the first word of the display name, or for "Andersson,
+Anna" the first word after the comma.
+
 ## Notes
 
 - **Token storage.** MSAL keeps its cache in `sessionStorage` (per tab, cleared when it
