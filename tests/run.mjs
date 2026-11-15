@@ -155,7 +155,7 @@ function fakeMsal(roles) {
 
 // ---- Browser helpers -------------------------------------------------------
 
-async function openPage(browser, { roles = null, query = "", seed = null } = {}) {
+async function openPage(browser, { roles = null, query = "", seed = null, path = "questions.html", setup = null } = {}) {
   const context = await browser.newContext();
   if (roles) {
     await context.route("**/msal-browser.min.js", (route) => route.fulfill({ contentType: "text/javascript", body: fakeMsal(roles) }));
@@ -163,11 +163,12 @@ async function openPage(browser, { roles = null, query = "", seed = null } = {})
   if (seed !== null) {
     await context.addInitScript(([k, v]) => localStorage.setItem(k, v), [`ipok-seed:${COURSE}`, String(seed)]);
   }
+  if (setup) await setup(context);
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
-  await page.goto(`${BASE}/questions.html${query}`);
+  await page.goto(`${BASE}/${path}${query}`);
   await page.waitForFunction(() => [...document.querySelectorAll(".question .ipok-status")].every((s) => !/Laddar/.test(s.textContent)));
   return { page, context, errors };
 }
@@ -371,6 +372,50 @@ async function testTeacherDebug(browser) {
   await context.close();
 }
 
+async function testProgress(browser) {
+  console.log("progress page");
+  let { page, context, errors } = await openPage(browser, { path: "progress.html" });
+  eq((await page.locator(".ipok-progress").textContent()).trim(), "Logga in för att se dina framsteg.", "signed out: sign-in note");
+  eq(await page.locator(".ipok-progress-link").count(), 0, "signed out: no navbar link");
+  ok(errors.length === 0, "no console errors", errors.join("; "));
+  await context.close();
+
+  store.clear();
+  const put = (section, id, data) =>
+    store.set(`test-module/${section}/${id}`, { exerciseId: id, exerciseData: JSON.stringify(data), completed: "" });
+  put("questions", "q-number", { attempt: 0, variant: "v01", solved: true, answers: [] });
+  put("questions", "q-text", { attempt: 2, variant: "v01", solved: false, answers: [] });
+  put("questions", "q-gone", { attempt: 0, variant: "v01", solved: true, answers: [] }); // no longer on the page
+  put("more", "q-fixed", { attempt: 0, variant: "v01", solved: true, answers: [] });
+  ({ page, context, errors } = await openPage(browser, { roles: ["Student"], path: "progress.html" }));
+  await page.waitForSelector(".ipok-progress-table");
+  const rows = await page.locator(".ipok-progress-table tbody tr").evaluateAll((trs) =>
+    trs.map((tr) => [tr.querySelector("a").textContent, tr.querySelector("a").getAttribute("href"), tr.lastChild.textContent]));
+  eq(rows, [["Questions", "questions.html", "1 / 7"], ["More questions", "sub/more.html", "1 / 1"]],
+    "one row per page with questions, in path order, counting only solved questions on the page");
+  eq(await page.locator(".ipok-progress-table tfoot").textContent(), "Totalt2 / 8", "total row");
+  ok(await page.locator('.ipok-progress-table tr[data-section="test-module/more"] td:last-child.ok').count() === 1, "a finished page is marked");
+  ok(errors.length === 0, "no console errors", errors.join("; "));
+  await context.close();
+
+  // The navbar link, from a page in a subfolder.
+  ({ page, context, errors } = await openPage(browser, { roles: ["Student"], path: "sub/more.html" }));
+  const link = page.locator(".ipok-auth a.ipok-progress-link");
+  eq(await link.textContent(), "Min sida", "signed in: navbar link");
+  eq(await link.evaluate((a) => a.href), `${BASE}/progress.html`, "navbar link resolves from a subfolder");
+  await context.close();
+
+  // A section that cannot be loaded.
+  ({ page, context, errors } = await openPage(browser, {
+    roles: ["Student"], path: "progress.html",
+    setup: (c) => c.route("**/mock-api/**/sections/more", (route) => route.fulfill({ status: 500 })),
+  }));
+  await page.waitForSelector(".ipok-progress-table");
+  eq(await page.locator('.ipok-progress-table tr[data-section="test-module/more"] td:last-child').textContent(), "kunde inte laddas", "failed section is marked");
+  eq(await page.locator('.ipok-progress-table tr[data-section="test-module/questions"] td:last-child').textContent(), "1 / 7", "other sections still shown");
+  await context.close();
+}
+
 // ---- Main --------------------------------------------------------------------
 
 const only = process.argv[2];
@@ -386,6 +431,7 @@ if (!only || only !== "errors") {
     await testDebugLocal(browser);
     await testSignedIn(browser);
     await testTeacherDebug(browser);
+    await testProgress(browser);
   } finally {
     await browser.close();
     server.close();

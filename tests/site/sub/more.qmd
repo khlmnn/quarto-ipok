@@ -1,0 +1,15 @@
+---
+title: More questions
+module-id: test-module
+section-id: more
+---
+
+A page in a subfolder, for the progress page's links.
+
+::: {.question id="q-fixed" type="text"}
+Skriv *ja*.
+
+```{.variants}
+[{"id": "v01", "answer": "ja"}]
+```
+:::

@@ -21,3 +21,4 @@ ipok:
   api-base: http://localhost:4173/mock-api
   scope: api://ipok-test/user_impersonation
   course-instance: ipok-test
+  progress-page: progress.html

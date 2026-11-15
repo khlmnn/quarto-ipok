@@ -2,4 +2,4 @@
 title: ipok tests
 ---
 
-Test pages for the ipok extension: [questions](questions.qmd).
+Test pages for the ipok extension: [questions](questions.qmd), [more questions](sub/more.qmd), [progress](progress.qmd).

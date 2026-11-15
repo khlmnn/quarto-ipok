@@ -17,8 +17,12 @@
 --   [{"id": "v1", "a": 2, "b": 3, "answer": 5}]
 --   ```
 --   :::
+-- Progress page (see the README, "Progress page"), optionally linked from the
+-- navbar with the site option progress-page:
+--   ::: {.ipok-progress}
+--   :::
 
-local VERSION = "0.2.1"
+local VERSION = "0.3.0"
 
 local SITE_KEYS = {
   { "client-id", "clientId" },
@@ -241,6 +245,72 @@ local function question(el, id)
   return el, q
 end
 
+-- ---- Progress page ------------------------------------------------------
+
+-- The id of a div, from id="…" or #…, as for exercises and questions.
+local function div_id(el)
+  return el.attributes["id"] or (el.identifier ~= "" and el.identifier or nil)
+end
+
+-- Every .qmd file under `dir`, skipping files and folders whose names start
+-- with "_" or "." (as Quarto does when rendering a project).
+local function qmd_files(dir, out)
+  local ok, names = pcall(pandoc.system.list_directory, dir)
+  if not ok then return out end
+  table.sort(names)
+  for _, name in ipairs(names) do
+    if not name:match("^[_.]") and name ~= "node_modules" then
+      local path = pandoc.path.join({ dir, name })
+      if name:match("%.qmd$") then
+        table.insert(out, path)
+      else
+        qmd_files(path, out)
+      end
+    end
+  end
+  return out
+end
+
+-- The pages of the project with questions, for the progress table:
+-- {title, href (relative to this page), module, section, questions = {ids}},
+-- in the order of their paths.
+local function progress_pages()
+  local root = quarto.project.directory
+  if root == nil then fail("a progress page (.ipok-progress) needs a Quarto project") end
+  local here = pandoc.path.normalize(quarto.doc.input_file)
+  local pages = {}
+  for _, path in ipairs(qmd_files(root, {})) do
+    local text = read_file(path)
+    local ok, doc = pcall(pandoc.read, text or "", "markdown")
+    if not ok then
+      warn("progress page: cannot read " .. path .. ", skipped")
+    elseif pandoc.path.normalize(path) ~= here then
+      local ids = {}
+      doc:walk({
+        Div = function(el)
+          if el.classes:includes("question") and div_id(el) then table.insert(ids, div_id(el)) end
+        end,
+      })
+      if #ids > 0 then
+        local module, section = str(doc.meta["module-id"]), str(doc.meta["section-id"])
+        if module == nil or section == nil then
+          warn("progress page: " .. path .. " has questions but no module-id / section-id, skipped")
+        else
+          local html = path:gsub("%.qmd$", ".html")
+          table.insert(pages, {
+            title = str(doc.meta.title) or pandoc.path.filename(path),
+            href = pandoc.path.make_relative(html, pandoc.path.directory(here), true),
+            module = module,
+            section = section,
+            questions = ids,
+          })
+        end
+      end
+    end
+  end
+  return pages
+end
+
 -- ---- Document -----------------------------------------------------------
 
 function Pandoc(doc)
@@ -256,6 +326,12 @@ function Pandoc(doc)
   config.module = str(doc.meta["module-id"])
   config.section = str(doc.meta["section-id"])
   config.lang = str(doc.meta["lang"]) or "en"
+  -- Optional: a page with an .ipok-progress div, relative to the site root;
+  -- signed-in users get a link to it in the navbar.
+  local progress_page = str(meta["progress-page"])
+  if progress_page and quarto.project.offset then
+    config.progressPage = quarto.project.offset .. "/" .. progress_page
+  end
   if config.module == RESERVED_MODULE then fail("module-id '" .. RESERVED_MODULE .. "' is reserved for ipok") end
 
   local exercises, questions = {}, {}
@@ -267,7 +343,11 @@ function Pandoc(doc)
   end
   doc = doc:walk({
     Div = function(el)
-      local id = el.attributes["id"] or (el.identifier ~= "" and el.identifier or nil)
+      if el.classes:includes("ipok-progress") then
+        config.progress = config.progress or progress_pages()
+        return nil
+      end
+      local id = div_id(el)
       if el.classes:includes("question") then
         claim(id, "question")
         local div, q = question(el, id)

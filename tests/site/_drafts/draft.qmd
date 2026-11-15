@@ -1,0 +1,15 @@
+---
+title: Draft
+module-id: test-module
+section-id: draft
+---
+
+Not part of the site: the progress page skips folders starting with "_".
+
+::: {.question id="q-draft" type="text"}
+x
+
+```{.variants}
+[{"id": "v01", "answer": "x"}]
+```
+:::

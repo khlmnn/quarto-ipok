@@ -12,6 +12,8 @@ page.
   for testing the API.
 - **Checked questions:** multiple-choice, number and text questions, checked in the
   browser, whose variant (numbers, options, data slice) depends on a per-student seed.
+- **Progress page:** a table of the site's pages with questions and how many of them
+  the student has solved, linked from the navbar when signed in.
 
 Used by the ETE335 test site, https://liu-nlp.ai/ete335-test/
 ([source](https://github.com/liu-nlp/ete335-test)).
@@ -54,6 +56,7 @@ ipok:
   api-base: https://ipok-progress-api-test-swe-wa.azurewebsites.net
   scope: https://liuonline.onmicrosoft.com/ida-spacy-progress-api-test-ar/user_impersonation
   course-instance: ete335-quarto-test
+  progress-page: min-sida.html   # optional
 ```
 
 | Key | Meaning |
@@ -63,6 +66,7 @@ ipok:
 | `api-base` | base URL of the Progress API |
 | `scope` | the Progress API scope to request a token for |
 | `course-instance` | the API's `courseInstanceId`, i.e. the namespace for this site's data |
+| `progress-page` | optional: the [progress page](#progress-page), relative to the site root; signed-in users get a link to it in the navbar |
 
 Client and tenant IDs are public identifiers, not secrets. Login only works at the
 registered redirect URI, so it does not work under `quarto preview` on `localhost`
@@ -249,6 +253,40 @@ where sign-in does not work; only the local seed is involved there).
 - **Visa alla varianter** lists every question's table in the student's order, to
   proof-read generated tables.
 
+## Progress page
+
+A page with an `ipok-progress` div shows signed-in students their progress on checked
+questions:
+
+```markdown
+---
+title: Min sida
+---
+
+::: {.ipok-progress}
+:::
+```
+
+The div gets a table with one row per page that has questions: the page's title as a
+link, and *x* / *y*, where *y* is the number of questions on the page and *x* the number
+of them the student has solved; a last row gives the totals. Records of questions that
+are no longer on a page do not count. Signed-out visitors see "Logga in för att se dina
+framsteg." Name the page in the site option `progress-page` to give signed-in users a
+"Min sida" link in the navbar; the page itself is not hidden, as nothing on a static site
+is.
+
+- **Which pages.** When the progress page is rendered, the filter reads every `.qmd`
+  file in the project, except in files and folders whose names start with `_` or `.`, and
+  lists those with `.question` divs, in the order of their paths. It takes `title`,
+  `module-id` and `section-id` from each file's own front matter (not from
+  `_metadata.yml`) and does not follow includes. Pages with questions but without
+  `module-id` / `section-id` are skipped with a warning.
+- **Rendering.** The list is made when the progress page is rendered, so a full
+  `quarto render` keeps it up to date. Rendering a single page, e.g. under `quarto
+  preview`, does not update the progress page.
+- **Requests.** One `GET` per section, all at the same time; a section that cannot be
+  loaded is marked in its row, and the others are still shown.
+
 ## Notes
 
 - **Token storage.** MSAL keeps its cache in `sessionStorage` (per tab, cleared when it
@@ -292,8 +330,8 @@ the full checklist).
 
 `tests/run.mjs` renders the fixture site `tests/site/` with the current extension, serves
 it with a mock Progress API, and drives it in headless Chromium (Playwright), signed out
-and, with a stand-in for MSAL, signed in as a student and as a teacher. It also checks
-the filter's build errors.
+and, with a stand-in for MSAL, signed in as a student and as a teacher, including the
+progress page. It also checks the filter's build errors.
 
 ```bash
 cd tests && npm install && npm test   # or: node run.mjs errors

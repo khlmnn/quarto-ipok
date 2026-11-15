@@ -1,7 +1,8 @@
 // IPOK Progress: sign-in button in the navbar, a save/load widget for every
-// `.exercise[data-exercise-id]` on the page (plain or code exercise), and
+// `.exercise[data-exercise-id]` on the page (plain or code exercise),
 // checked questions (`.question[data-question-id]`) whose variant depends on
-// a per-student seed. Configuration is written by ipok.lua into
+// a per-student seed, and the progress table of a `.ipok-progress` page.
+// Configuration is written by ipok.lua into
 // <script id="ipok-config" type="application/json">.
 (() => {
   "use strict";
@@ -103,6 +104,7 @@
     const a = account();
     if (a) {
       authBox.appendChild(el("span", { class: "ipok-user", text: a.name || a.username, title: a.username }));
+      if (cfg.progressPage) authBox.appendChild(el("a", { class: "ipok-progress-link", href: cfg.progressPage, text: t("myPage") }));
       const b = el("button", { class: "btn btn-sm btn-outline-light", type: "button", text: "Sign out" });
       b.onclick = logout;
       authBox.appendChild(b);
@@ -372,6 +374,9 @@
       dAll: "Show all variants", dNext: "Next variant", dReset: "Reset", dVariant: "variant",
       dAttempt: "attempt", dSolved: "solved", dAnswer: "answer", dOffset: "debug offset, not saved",
       dLocal: "signed out: local seed, nothing is saved",
+      myPage: "My page", pPage: "Page", pSolved: "Solved", pTotal: "Total",
+      pSignIn: "Sign in to see your progress.", pNone: "There are no questions yet.",
+      pLoadFailed: "could not be loaded",
     },
     sv: {
       answer: "Svara", correct: "Rätt!", wrong: "Fel.", newQuestion: "Ny fråga",
@@ -383,6 +388,9 @@
       dAll: "Visa alla varianter", dNext: "Nästa variant", dReset: "Återställ", dVariant: "variant",
       dAttempt: "försök", dSolved: "löst", dAnswer: "svar", dOffset: "debug-förskjutning, sparas inte",
       dLocal: "utloggad: lokal seed, inget sparas",
+      myPage: "Min sida", pPage: "Sida", pSolved: "Rätt besvarade", pTotal: "Totalt",
+      pSignIn: "Logga in för att se dina framsteg.", pNone: "Det finns inga frågor än.",
+      pLoadFailed: "kunde inte laddas",
     },
   };
   const t = (key) => (STRINGS[(cfg.lang || "en").slice(0, 2)] || STRINGS.en)[key];
@@ -844,6 +852,55 @@
     q.debugBox.replaceChildren(...children);
   }
 
+  // ---- Progress page ------------------------------------------------------
+  //
+  // A `.ipok-progress` div gets a table of the site's pages with questions
+  // (listed by ipok.lua when the page is rendered) and, for each, how many of
+  // its questions the student has solved. Only questions still on a page
+  // count. One GET per section, all at once.
+
+  async function initProgress() {
+    const boxes = [...document.querySelectorAll(".ipok-progress")];
+    if (!boxes.length) return;
+    const pages = Array.isArray(cfg.progress) ? cfg.progress : [];
+    const show = (...children) => { for (const b of boxes) b.replaceChildren(...children.map((c) => c.cloneNode(true))); };
+    if (!account()) { show(el("p", { class: "ipok-question-note", text: t("pSignIn") })); return; }
+    if (!pages.length) { show(el("p", { text: t("pNone") })); return; }
+    show(el("p", { class: "ipok-status", text: t("loading") }));
+
+    const key = (p) => `${p.module}\u0000${p.section}`;
+    const keys = [...new Map(pages.map((p) => [key(p), p])).values()];
+    const solved = new Map(await Promise.all(keys.map(async (p) => {
+      try {
+        const section = await api("GET", sectionPath(p.module, p.section));
+        const ids = (section?.exercises || []).filter((x) => parseState(x).solved).map((x) => x.exerciseId);
+        return [key(p), new Set(ids)];
+      } catch (e) {
+        console.error("[ipok]", e);
+        return [key(p), null];
+      }
+    })));
+
+    let total = 0, done = 0;
+    const row = (cells, tag = "td") => el("tr", {}, cells.map((c) => (typeof c === "string" ? el(tag, { text: c }) : el(tag, {}, [c]))));
+    const rows = pages.map((p) => {
+      const s = solved.get(key(p));
+      const n = p.questions.length;
+      const x = s ? p.questions.filter((id) => s.has(id)).length : 0;
+      total += n; done += x;
+      const tr = row([el("a", { href: p.href, text: p.title }), s ? `${x} / ${n}` : t("pLoadFailed")]);
+      tr.dataset.section = `${p.module}/${p.section}`;
+      if (!s) tr.lastChild.className = "ipok-status err";
+      else if (x === n) tr.lastChild.className = "ipok-status ok";
+      return tr;
+    });
+    show(el("table", { class: "table ipok-progress-table" }, [
+      el("thead", {}, [row([t("pPage"), t("pSolved")], "th")]),
+      el("tbody", {}, rows),
+      el("tfoot", {}, [row([t("pTotal"), `${done} / ${total}`], "th")]),
+    ]));
+  }
+
   // ---- Load / save / delete ---------------------------------------------
 
   // `quiet` refreshes after a save or delete without flashing "loading…".
@@ -914,6 +971,7 @@
     renderNavbar();
     renderWidgets();
     await initQuestions();
+    await initProgress();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
