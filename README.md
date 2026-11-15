@@ -312,6 +312,13 @@ the page's HTML and can be read in its source: the gate keeps students from foll
 link before they are done, but it is not access control, and whoever receives the
 registrations should check them against the stored progress.
 
+## Name
+
+The shortcode `{{< ipok-name >}}` shows the signed-in user's name (the display name from
+Entra ID, e.g. "Anna Andersson"), on any page and inside text: `Hej, {{< ipok-name >}}!`.
+Signed out, it shows nothing, or its argument: `{{< ipok-name "du" >}}`. It renders as a
+`<span class="ipok-name">`, so `[du]{.ipok-name}` works too.
+
 ## Notes
 
 - **Token storage.** MSAL keeps its cache in `sessionStorage` (per tab, cleared when it

@@ -2,6 +2,8 @@
 title: Min sida
 ---
 
+Hej, {{< ipok-name >}}! Hej, {{< ipok-name "du" >}}!
+
 ::: {.ipok-progress}
 :::
 

@@ -852,6 +852,14 @@
     q.debugBox.replaceChildren(...children);
   }
 
+  // `.ipok-name` spans (the ipok-name shortcode) get the signed-in user's
+  // name; signed out, they keep their content.
+  function renderNames() {
+    const a = account();
+    if (!a) return;
+    for (const s of document.querySelectorAll(".ipok-name")) s.textContent = a.name || a.username;
+  }
+
   // ---- Progress page ------------------------------------------------------
   //
   // A `.ipok-progress` div gets a table of the site's pages with questions
@@ -977,6 +985,7 @@
       console.error("[ipok] MSAL error", e);
     }
     renderNavbar();
+    renderNames();
     renderWidgets();
     await initQuestions();
     await initProgress();

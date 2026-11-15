@@ -379,6 +379,7 @@ async function testProgress(browser) {
   eq(await page.locator(".ipok-progress-link").count(), 0, "signed out: no navbar link");
   ok(await page.locator(".ipok-gate").isHidden(), "signed out: gate hidden");
   ok(await page.locator(".ipok-gate-closed").isHidden(), "signed out: closed gate hidden");
+  eq(await page.locator(".ipok-name").allTextContents(), ["", "du"], "signed out: name empty or fallback");
   ok(errors.length === 0, "no console errors", errors.join("; "));
   await context.close();
 
@@ -399,6 +400,7 @@ async function testProgress(browser) {
   ok(await page.locator('.ipok-progress-table tr[data-section="test-module/more"] td:last-child.ok').count() === 1, "a finished page is marked");
   ok(await page.locator(".ipok-gate").isHidden(), "some questions unsolved: gate hidden");
   ok(await page.locator(".ipok-gate-closed").isVisible(), "some questions unsolved: closed gate shown");
+  eq(await page.locator(".ipok-name").allTextContents(), ["Test Student", "Test Student"], "signed in: name shown");
   ok(errors.length === 0, "no console errors", errors.join("; "));
   await context.close();
 
