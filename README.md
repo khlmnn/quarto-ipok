@@ -105,12 +105,14 @@ needs `format: live-html`). Everything else is a **plain exercise**.
 ### Code exercises
 
 - Saved when the student presses **Run Code** (or Ctrl/Cmd-Enter), once the run has
-  finished. "Start Over" is not saved, nor are runs started by a later cell's
-  "Run All Above" (in the `khlmnn/quarto-live` fork).
+  finished, and on **Start Over** (as the page's code without output). Runs started by a
+  later cell's "Run All Above" (in the `khlmnn/quarto-live` fork) are not saved.
+- Saving is silent: ipok adds nothing to the cell, except a message when saving or loading
+  fails. Signed out, nothing is saved; tell students on the page to sign in first.
 - On the next visit, saved code is put back into the editor, and saved output is shown
   below it with quarto-live's own markup, as if the cell had been run. It appears before
-  Pyodide has loaded, and is replaced by real output on the next Run. Start Over and
-  **Delete saved** clear it.
+  Pyodide has loaded, and is replaced by real output on the next Run. Start Over clears
+  it.
 - Python's state is not restored: cells that depend on earlier cells need those to be run
   again.
 - Only the first Pyodide cell in an exercise is saved.

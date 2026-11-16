@@ -22,3 +22,4 @@
 .ipok-debug-row { display: flex; gap: .5rem; align-items: center; margin: .5rem 0; }
 .ipok-auth .ipok-progress-link { font-size: .85rem; white-space: nowrap; color: inherit; }
 .ipok-progress-table td:last-child, .ipok-progress-table th:last-child { text-align: right; white-space: nowrap; }
+.ipok-code-status { font-size: .85rem; margin: -.5rem 0 .75rem; }

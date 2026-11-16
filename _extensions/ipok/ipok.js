@@ -119,9 +119,10 @@
   // ---- Exercise widgets -------------------------------------------------
   //
   // An exercise div that contains a quarto-live Pyodide cell is a *code*
-  // exercise: it saves automatically when Run is pressed, storing
-  // {code, output} with code = null if the student left it unchanged.
-  // Any other exercise div is a *plain* exercise with a text box and PUT.
+  // exercise: it saves automatically when Run or Start Over is pressed,
+  // storing {code, output} with code = null if the editor holds the page's
+  // code. It shows nothing of its own except errors. Any other exercise div
+  // is a *plain* exercise with a text box and PUT.
 
   const widgets = new Map(); // exerciseId -> widget
   // Saved like a code exercise: an exercise div, or a question's code cell.
@@ -135,9 +136,11 @@
   // Same encoding as quarto-live's json_as_b64 (base64 of UTF-8 JSON).
   const b64Json = (s) => JSON.parse(decodeURIComponent(escape(atob(s.trim()))));
 
+  // Code widgets show only errors.
   function setStatus(w, text, kind = "") {
     w.status.textContent = text;
     w.status.className = "ipok-status " + kind;
+    if (w.kind === "code") w.status.hidden = kind !== "err";
   }
 
   function renderPlainWidget(div, id) {
@@ -163,16 +166,11 @@
   function renderCodeWidget(div, id, cell) {
     const script = div.querySelector(`script[type="${cell.id}-contents"]`);
     const initialCode = script ? b64Json(script.textContent).code : null;
-    const status = el("span", { class: "ipok-status" });
-    const del = el("button", { class: "btn btn-sm btn-outline-danger", type: "button", text: "Delete saved" });
-    const w = { kind: "code", id, cell, initialCode, status, buttons: [del], runToken: 0, loaded: false, restoredOutput: null };
-    del.onclick = () => remove(w);
-    div.appendChild(el("div", { class: "ipok-widget" }, [
-      el("div", { class: "ipok-widget-head" }, [
-        el("code", { text: id }), document.createTextNode(" · saved when you press Run · "), status,
-      ]),
-      el("div", { class: "ipok-buttons" }, [del]),
-    ]));
+    const status = el("div", { class: "ipok-status ipok-code-status", role: "status" });
+    status.hidden = true;
+    const w = { kind: "code", id, cell, initialCode, status, buttons: [], runToken: 0, loaded: false, restoredOutput: null };
+    w.persist = (data) => save(w, JSON.stringify(data));
+    cell.after(status);
     if (!initialCode) console.warn(`[ipok] ${id}: could not read the cell's initial code`);
     return w;
   }
@@ -192,29 +190,32 @@
     for (const w of widgets.values()) {
       w.buttons.forEach((b) => (b.disabled = !signedIn));
       if (w.input) w.input.disabled = !signedIn;
-      if (!signedIn) setStatus(w, w.kind === "code" ? "sign in to save your code" : "sign in to load and save");
+      if (!signedIn && w.kind === "plain") setStatus(w, "sign in to load and save");
     }
   }
 
   function showStored(w, ex) {
-    if (!ex) {
-      if (w.kind === "plain") w.stored.hidden = true;
-      setStatus(w, "nothing saved yet");
+    if (w.kind === "code") {
+      // Code and output are restored once per page load.
+      if (w.loaded) return;
       w.loaded = true;
+      let data = {};
+      try { data = JSON.parse(ex?.exerciseData || "{}") || {}; } catch { console.warn(`[ipok] ${w.id}: stored data is not JSON`); }
+      restoreSaved(w, data);
+      return;
+    }
+    if (!ex) {
+      w.stored.hidden = true;
+      setStatus(w, "nothing saved yet");
       return;
     }
     setStatus(w, `saved ${new Date(ex.completed).toLocaleString()}`, "ok");
-    if (w.kind === "plain") {
-      w.stored.hidden = false;
-      w.stored.textContent = ex.exerciseData ?? "";
-      return;
-    }
-    // Code and output are restored once per page load; later reloads of the
-    // progress (after each save) only update the status line.
-    if (w.loaded) return;
-    w.loaded = true;
-    let data = {};
-    try { data = JSON.parse(ex.exerciseData || "{}"); } catch { console.warn(`[ipok] ${w.id}: stored data is not JSON`); }
+    w.stored.hidden = false;
+    w.stored.textContent = ex.exerciseData ?? "";
+  }
+
+  // Saved {code, output} back into a code widget.
+  function restoreSaved(w, data) {
     if (typeof data.code === "string") restoreCode(w, data.code);
     if (Array.isArray(data.output) && data.output.length) restoreOutput(w, data.output);
   }
@@ -244,7 +245,7 @@
     const view = editorView(content);
     if (!view) {
       console.warn(`[ipok] ${w.id}: could not find the editor to restore saved code`);
-      setStatus(w, "saved code could not be restored into the editor", "err");
+      setStatus(w, t("restoreFailed"), "err");
       return;
     }
     if (view.state.doc.toString() !== code) {
@@ -315,6 +316,10 @@
     w.restoredOutput = null;
   }
 
+  // The code as saved: null if it is the page's code.
+  const savedCode = (w, code) =>
+    w.initialCode !== null && code.trimEnd() === w.initialCode.trimEnd() ? null : code;
+
   async function onRun(w, editorContainer) {
     clearRestoredOutput(w);
     if (!account()) return;
@@ -323,30 +328,37 @@
     await tick(); // let quarto-live update the editor's value first
     const code = editorContainer.value?.code;
     if (typeof code !== "string") return;
-    setStatus(w, "running…");
     // Each run renders a fresh output container once evaluation is done.
     const out = await waitFor(w.cell, () => {
       const c = w.cell.querySelector(".cell-output-container");
       return c && c !== before ? c : null;
     });
     if (token !== w.runToken) return; // a newer run took over
-    const unchanged = w.initialCode !== null && code.trimEnd() === w.initialCode.trimEnd();
-    await save(w, JSON.stringify({ code: unchanged ? null : code, output: readOutput(out) }));
+    await w.persist({ code: savedCode(w, code), output: readOutput(out) });
+  }
+
+  // Start Over puts the page's code back and clears the output; saved so.
+  async function onStartOver(w) {
+    clearRestoredOutput(w);
+    w.runToken++; // a run still going is not saved
+    if (!account()) return;
+    await w.persist({ code: null, output: [] });
   }
 
   // quarto-live signals Run (button or Ctrl/Cmd-Enter) with a non-bubbling
   // CustomEvent("input", {detail: {commit: true}}) on the editor container;
-  // "Start Over" sends the same event with an explicit `code`: it clears
-  // the output like a fresh cell but is not saved. Runs started by a later
-  // cell's "Run All Above" carry `runAbove: true`; they only rebuild Python's
-  // state, so their real output replaces the restored one but is not saved.
+  // "Start Over" sends the same event with an explicit `code`. Runs started
+  // by a later cell's "Run All Above" carry `runAbove: true`; they only
+  // rebuild Python's state, so their real output replaces the restored one
+  // but is not saved.
   document.addEventListener("input", (e) => {
     const d = e.detail;
     if (!(e instanceof CustomEvent) || !d || d.commit !== true) return;
     const div = e.target.closest?.(EXERCISE);
     const w = div && widgets.get(div.dataset.exerciseId);
     if (w?.kind !== "code" || !w.cell.contains(e.target)) return;
-    if ("code" in d || d.runAbove === true) clearRestoredOutput(w);
+    if ("code" in d) onStartOver(w);
+    else if (d.runAbove === true) clearRestoredOutput(w);
     else onRun(w, e.target);
   }, true);
 
@@ -375,6 +387,8 @@
       empty: "Enter an answer.", choose: "Choose an option.", signIn: "Sign in to save your answers.",
       loading: "Loading…", loadFailed: "Could not load the question: ", saveFailed: "Could not save your answer: ",
       answerLabel: "Your answer",
+      saveCodeFailed: "Could not save your code: ", loadCodeFailed: "Could not load your saved code: ",
+      restoreFailed: "Your saved code could not be put back into the editor.",
       dSeed: "Seed", dRead: "Read", dSave: "Save", dDerived: "Reset to derived", dRandom: "New random",
       dAll: "Show all variants", dNext: "Next variant", dReset: "Reset", dVariant: "variant",
       dAttempt: "attempt", dSolved: "solved", dAnswer: "answer", dOffset: "debug offset, not saved",
@@ -389,6 +403,8 @@
       empty: "Skriv ett svar.", choose: "Välj ett alternativ.", signIn: "Logga in för att spara dina svar.",
       loading: "Laddar …", loadFailed: "Kunde inte ladda frågan: ", saveFailed: "Kunde inte spara ditt svar: ",
       answerLabel: "Ditt svar",
+      saveCodeFailed: "Kunde inte spara din kod: ", loadCodeFailed: "Kunde inte ladda din sparade kod: ",
+      restoreFailed: "Din sparade kod kunde inte läggas tillbaka i cellen.",
       dSeed: "Seed", dRead: "Läs", dSave: "Spara", dDerived: "Återställ härledd", dRandom: "Ny slumpad",
       dAll: "Visa alla varianter", dNext: "Nästa variant", dReset: "Återställ", dVariant: "variant",
       dAttempt: "försök", dSolved: "löst", dAnswer: "svar", dOffset: "debug-förskjutning, sparas inte",
@@ -754,7 +770,7 @@
       q.submitButton.disabled = false;
       renderQuestion(q);
     }
-    if (questions.size) await initDebug();
+    if (questions.size || widgets.size) await initDebug();
   }
 
   // ---- Debug panel
@@ -768,6 +784,13 @@
     const local = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
     const allowed = account() ? (await tokenRoles()).includes("Teacher") : local;
     if (!allowed) { console.info("[ipok] debug panel: needs the Teacher role (or localhost when signed out)"); return; }
+
+    // Exercise ids are shown only here.
+    for (const w of widgets.values()) {
+      const where = w.kind === "code" ? w.status : w.status.closest(".ipok-widget");
+      where?.after(el("div", { class: "ipok-question-debug", text: `exercise ${w.id}` }));
+    }
+    if (!questions.size) return;
 
     const field = el("input", { type: "text", class: "form-control form-control-sm", "aria-label": t("dSeed"), inputmode: "numeric" });
     const status = el("span", { class: "ipok-status" });
@@ -818,6 +841,7 @@
     const s = q.state;
     const fmt = (x) => (Array.isArray(x) ? x.join(" | ") : String(x));
     const line = [
+      q.id,
       `${t("dVariant")} ${shown.id} (${order.indexOf(shown) + 1}/${order.length})`,
       `${t("dAttempt")} ${s.attempt}`,
       `${t("dSolved")} ${s.solved ? "✓" : "–"}`,
@@ -941,7 +965,7 @@
   // `quiet` refreshes after a save or delete without flashing "loading…".
   async function loadProgress({ quiet = false, section = null } = {}) {
     if (widgets.size === 0) return;
-    if (!quiet) for (const w of widgets.values()) setStatus(w, "loading…");
+    if (!quiet) for (const w of widgets.values()) if (w.kind === "plain") setStatus(w, "loading…");
     try {
       section ??= await api("GET", sectionPath());
       const byId = new Map((section?.exercises || []).map((x) => [x.exerciseId, x]));
@@ -950,18 +974,20 @@
       if (orphans.length) console.info("[ipok] stored exercises not on this page:", orphans);
     } catch (e) {
       console.error("[ipok]", e);
-      for (const w of widgets.values()) setStatus(w, `load failed: ${e.message}`, "err");
+      for (const w of widgets.values()) setStatus(w, w.kind === "code" ? t("loadCodeFailed") + e.message : `load failed: ${e.message}`, "err");
     }
   }
 
   async function save(w, exerciseData) {
-    setStatus(w, "saving…");
+    const code = w.kind === "code";
+    if (!code) setStatus(w, "saving…");
     try {
       await putRecord(w.id, exerciseData);
-      await loadProgress({ quiet: true });
+      if (code) setStatus(w, "");
+      else await loadProgress({ quiet: true });
     } catch (e) {
       console.error("[ipok]", e);
-      setStatus(w, `save failed: ${e.message}`, "err");
+      setStatus(w, code ? t("saveCodeFailed") + e.message : `save failed: ${e.message}`, "err");
     }
   }
 
@@ -969,7 +995,6 @@
     setStatus(w, "deleting…");
     try {
       await deleteRecord(w.id);
-      if (w.kind === "code") clearRestoredOutput(w);
       await loadProgress({ quiet: true });
     } catch (e) {
       console.error("[ipok]", e);
