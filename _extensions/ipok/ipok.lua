@@ -188,6 +188,25 @@ local function is_code_cell(b)
   return found
 end
 
+-- The exercise name quarto-live gave a code cell (ipok-pre.lua sets it to the
+-- question id): from the code block's attribute, or from the cell's options
+-- in quarto-live's <script type="pyodide-N-contents"> (base64 of JSON
+-- {code, attr}) if quarto-live's filter ran first.
+local function cell_exercise(cell)
+  local name = nil
+  cell:walk({
+    CodeBlock = function(c) name = name or c.attributes["exercise"] end,
+    RawBlock = function(r)
+      local b64 = r.text:match('^<script type="pyodide%-%d+%-contents">%s*(.-)%s*</script>$')
+      if b64 and not name then
+        local ok, block = pcall(function() return pandoc.json.decode(quarto.base64.decode(b64), false) end)
+        if ok and type(block) == "table" and type(block.attr) == "table" then name = block.attr.exercise end
+      end
+    end,
+  })
+  return name
+end
+
 -- Turns a .question div into the markup ipok.js fills in, and returns the
 -- question's data for the page configuration.
 local function question(el, id)
@@ -198,7 +217,7 @@ local function question(el, id)
 
   -- The variants: a {.variants} code block inside the div, or a JSON file.
   -- An optional code cell after the text stays out of the template, so that
-  -- it runs; ipok.js saves it like a code exercise, as record <id>-code.
+  -- it runs; ipok.js saves its code and output in the question's record.
   local inline, content, code = nil, pandoc.Blocks({}), nil
   for _, b in ipairs(el.content) do
     if b.t == "CodeBlock" and b.classes:includes("variants") then
@@ -262,8 +281,13 @@ local function question(el, id)
   el.identifier = ""
   el.attributes["data-question-id"] = id
   if code then
-    q.code = id .. "-code"
-    content:insert(pandoc.Div({ code }, pandoc.Attr("", { "ipok-question-code" }, { ["data-exercise-id"] = q.code })))
+    -- It runs in an environment of its own (see ipok-pre.lua).
+    if cell_exercise(code) ~= id then
+      fail("question '" .. id .. "': the code cell is not a quarto-live exercise named '" .. id ..
+        "' (is ipok-pre.lua missing from the extension, or does the cell set its own exercise option?)")
+    end
+    q.code = true
+    content:insert(pandoc.Div({ code }, pandoc.Attr("", { "ipok-question-code" })))
   end
   el.content = content
   return el, q
@@ -383,10 +407,6 @@ function Pandoc(doc)
         claim(id, "question")
         local div, q = question(el, id)
         table.insert(questions, q)
-        if q.code then
-          claim(q.code, "code cell of question '" .. id .. "'")
-          table.insert(exercises, q.code)
-        end
         return div
       end
       if not el.classes:includes("exercise") then return nil end

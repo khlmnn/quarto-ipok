@@ -1,8 +1,8 @@
 // IPOK Progress: sign-in button in the navbar, a save/load widget for every
-// `.exercise[data-exercise-id]` on the page (plain or code exercise) and for
-// the code cell of a question (`.ipok-question-code[data-exercise-id]`),
+// `.exercise[data-exercise-id]` on the page (plain or code exercise),
 // checked questions (`.question[data-question-id]`) whose variant depends on
-// a per-student seed, and the progress table of a `.ipok-progress` page.
+// a per-student seed and whose code cell (`.ipok-question-code`) is saved
+// with the question, and the progress table of a `.ipok-progress` page.
 // Configuration is written by ipok.lua into
 // <script id="ipok-config" type="application/json">.
 (() => {
@@ -122,11 +122,11 @@
   // exercise: it saves automatically when Run or Start Over is pressed,
   // storing {code, output} with code = null if the editor holds the page's
   // code. It shows nothing of its own except errors. Any other exercise div
-  // is a *plain* exercise with a text box and PUT.
+  // is a *plain* exercise with a text box and PUT. A question's code cell is
+  // a code widget too, but saves into the question's record (w.persist).
 
   const widgets = new Map(); // exerciseId -> widget
-  // Saved like a code exercise: an exercise div, or a question's code cell.
-  const EXERCISE = ".exercise[data-exercise-id], .ipok-question-code[data-exercise-id]";
+  const EXERCISE = ".exercise[data-exercise-id]";
 
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -163,13 +163,14 @@
     return w;
   }
 
-  function renderCodeWidget(div, id, cell) {
+  // `persist(data)` saves {code, output}; by default as the exercise's record.
+  function renderCodeWidget(div, id, cell, persist = null) {
     const script = div.querySelector(`script[type="${cell.id}-contents"]`);
     const initialCode = script ? b64Json(script.textContent).code : null;
     const status = el("div", { class: "ipok-status ipok-code-status", role: "status" });
     status.hidden = true;
-    const w = { kind: "code", id, cell, initialCode, status, buttons: [], runToken: 0, loaded: false, restoredOutput: null };
-    w.persist = (data) => save(w, JSON.stringify(data));
+    const w = { kind: "code", id, cell, initialCode, status, buttons: [], runToken: 0, loaded: false, restoredOutput: null, locked: false };
+    w.persist = persist || ((data) => save(w, JSON.stringify(data)));
     cell.after(status);
     if (!initialCode) console.warn(`[ipok] ${id}: could not read the cell's initial code`);
     return w;
@@ -320,6 +321,13 @@
   const savedCode = (w, code) =>
     w.initialCode !== null && code.trimEnd() === w.initialCode.trimEnd() ? null : code;
 
+  // The code in the editor now (null if it cannot be read).
+  function editorCode(w) {
+    const content = w.cell.querySelector(".cm-content");
+    const view = content && editorView(content);
+    return view ? view.state.doc.toString() : null;
+  }
+
   async function onRun(w, editorContainer) {
     clearRestoredOutput(w);
     if (!account()) return;
@@ -345,22 +353,38 @@
     await w.persist({ code: null, output: [] });
   }
 
+  // The code widget an editor event belongs to: an exercise's or a question's.
+  function codeWidgetOf(target) {
+    const div = target.closest?.(`${EXERCISE}, .question[data-question-id]`);
+    if (!div) return null;
+    const w = div.matches(EXERCISE) ? widgets.get(div.dataset.exerciseId) : questions.get(div.dataset.questionId)?.codeWidget;
+    return w?.kind === "code" && w.cell.contains(target) ? w : null;
+  }
+
   // quarto-live signals Run (button or Ctrl/Cmd-Enter) with a non-bubbling
   // CustomEvent("input", {detail: {commit: true}}) on the editor container;
   // "Start Over" sends the same event with an explicit `code`. Runs started
   // by a later cell's "Run All Above" carry `runAbove: true`; they only
   // rebuild Python's state, so their real output replaces the restored one
-  // but is not saved.
+  // but is not saved. A locked editor (solved question) ignores all of them.
   document.addEventListener("input", (e) => {
     const d = e.detail;
     if (!(e instanceof CustomEvent) || !d || d.commit !== true) return;
-    const div = e.target.closest?.(EXERCISE);
-    const w = div && widgets.get(div.dataset.exerciseId);
-    if (w?.kind !== "code" || !w.cell.contains(e.target)) return;
+    const w = codeWidgetOf(e.target);
+    if (!w || w.locked) return;
     if ("code" in d) onStartOver(w);
     else if (d.runAbove === true) clearRestoredOutput(w);
     else onRun(w, e.target);
   }, true);
+
+  // Lock or unlock the editor of a code widget (quarto-live fork: "live-lock"
+  // on the editor container, the parent of .exercise-editor).
+  async function setLocked(w, locked) {
+    w.locked = locked;
+    const card = await waitFor(w.cell, () => w.cell.querySelector(".exercise-editor"));
+    if (w.locked !== locked) return; // changed meanwhile
+    card.parentElement.dispatchEvent(new CustomEvent("live-lock", { detail: { locked } }));
+  }
 
   // ---- Checked questions ------------------------------------------------
   //
@@ -370,7 +394,10 @@
   // moves only the students whose order it lands in front of. A multiple-choice
   // question shows the next variant in that order after each wrong answer;
   // number and text questions always show the first. The state of a question
-  // is saved as an ordinary progress record, {attempt, variant, solved, answers}.
+  // is saved as an ordinary progress record, {attempt, variant, solved,
+  // answers}, plus {code, output} of its code cell if it has one; each answer
+  // also keeps the code that was in the cell. A solved question's cell is
+  // locked.
   //
   // The seed is the record (_ipok, _ipok, seed) = {"seed": <uint32>}, created at
   // first sign-in as the first 4 bytes of SHA-256("<course-instance>:<account
@@ -386,7 +413,7 @@
       tryAgain: "Wrong, try again.", notANumber: "Enter a number, for example 3.5.",
       empty: "Enter an answer.", choose: "Choose an option.", signIn: "Sign in to save your answers.",
       loading: "Loading…", loadFailed: "Could not load the question: ", saveFailed: "Could not save your answer: ",
-      answerLabel: "Your answer",
+      answerLabel: "Your answer", locked: "Solved: the code can no longer be changed.",
       saveCodeFailed: "Could not save your code: ", loadCodeFailed: "Could not load your saved code: ",
       restoreFailed: "Your saved code could not be put back into the editor.",
       dSeed: "Seed", dRead: "Read", dSave: "Save", dDerived: "Reset to derived", dRandom: "New random",
@@ -402,7 +429,7 @@
       tryAgain: "Fel, försök igen.", notANumber: "Skriv ett tal, till exempel 3,5.",
       empty: "Skriv ett svar.", choose: "Välj ett alternativ.", signIn: "Logga in för att spara dina svar.",
       loading: "Laddar …", loadFailed: "Kunde inte ladda frågan: ", saveFailed: "Kunde inte spara ditt svar: ",
-      answerLabel: "Ditt svar",
+      answerLabel: "Ditt svar", locked: "Löst: koden kan inte ändras längre.",
       saveCodeFailed: "Kunde inte spara din kod: ", loadCodeFailed: "Kunde inte ladda din sparade kod: ",
       restoreFailed: "Din sparade kod kunde inte läggas tillbaka i cellen.",
       dSeed: "Seed", dRead: "Läs", dSave: "Spara", dDerived: "Återställ härledd", dRandom: "Ny slumpad",
@@ -551,6 +578,12 @@
 
   const freshState = () => ({ attempt: 0, variant: null, solved: false, answers: [] });
 
+  // A question's state as saved: code and output only with a code cell.
+  function stateData(q) {
+    const { code, output, ...rest } = q.state;
+    return q.codeWidget ? { ...rest, code: code ?? null, output: output ?? [] } : rest;
+  }
+
   function parseState(ex) {
     let d = {};
     try { d = JSON.parse(ex?.exerciseData || "{}") || {}; } catch { /* not JSON */ }
@@ -559,13 +592,15 @@
       variant: typeof d.variant === "string" ? d.variant : null,
       solved: d.solved === true,
       answers: Array.isArray(d.answers) ? d.answers : [],
+      code: typeof d.code === "string" ? d.code : null,
+      output: Array.isArray(d.output) ? d.output : [],
     };
   }
 
   async function saveState(q) {
     if (!account()) return;
     try {
-      await putRecord(q.id, JSON.stringify(q.state));
+      await putRecord(q.id, JSON.stringify(stateData(q)));
     } catch (e) {
       console.error("[ipok]", e);
       setQStatus(q, t("saveFailed") + e.message, "err");
@@ -667,6 +702,10 @@
     else if (q.hint) setQStatus(q, q.hint, q.hintKind || "");
     else setQStatus(q, "");
     q.note.hidden = !!account();
+    if (q.codeWidget) {
+      q.lockNote.hidden = !solved;
+      if (solved !== q.codeWidget.locked) setLocked(q.codeWidget, solved);
+    }
     renderQuestionDebug(q);
   }
 
@@ -685,7 +724,12 @@
       return;
     }
     const s = q.state;
-    s.answers.push({ variant: v.id, answer: value, correct: r.correct });
+    const entry = { variant: v.id, answer: value, correct: r.correct };
+    if (q.codeWidget) {
+      const code = editorCode(q.codeWidget);
+      entry.code = code === null ? null : savedCode(q.codeWidget, code);
+    }
+    s.answers.push(entry);
     s.variant = v.id;
     q.hint = null;
     q.keep = null;
@@ -738,8 +782,21 @@
     q.debugBox.hidden = true;
     div.append(q.body, q.input,
       el("div", { class: "ipok-buttons" }, [q.submitButton, q.newButton, q.status]), q.note, q.debugBox);
-    // A code cell (from ipok.lua) goes between the text and the answer.
-    div.querySelector(":scope > .ipok-question-code")?.before(q.body);
+    // A code cell (from ipok.lua) goes between the text and the answer. It
+    // is saved with the question: {code, output} in the question's record.
+    const codeDiv = div.querySelector(":scope > .ipok-question-code");
+    const cell = codeDiv?.querySelector(".exercise-cell[id^='pyodide-']");
+    if (codeDiv) codeDiv.before(q.body);
+    if (cell) {
+      q.codeWidget = renderCodeWidget(codeDiv, q.id, cell, async (data) => {
+        q.state.code = data.code;
+        q.state.output = data.output;
+        await saveState(q);
+      });
+      q.lockNote = el("div", { class: "ipok-question-note ipok-lock-note", text: t("locked") });
+      q.lockNote.hidden = true;
+      codeDiv.append(q.lockNote);
+    }
     setQStatus(q, t("loading"));
     q.submitButton.disabled = true;
     return q;
@@ -768,6 +825,7 @@
     for (const q of questions.values()) {
       q.state = parseState(byId.get(q.id));
       q.submitButton.disabled = false;
+      if (q.codeWidget) restoreSaved(q.codeWidget, q.state);
       renderQuestion(q);
     }
     if (questions.size || widgets.size) await initDebug();
@@ -863,6 +921,12 @@
       try { if (account()) await deleteRecord(q.id); }
       catch (e) { setQStatus(q, e.message, "err"); return; }
       q.state = freshState(); q.debugOffset = 0; q.hint = null; q.keep = null;
+      if (q.codeWidget) {
+        const w = q.codeWidget;
+        w.runToken++;
+        clearRestoredOutput(w);
+        if (w.initialCode !== null) restoreCode(w, w.initialCode);
+      }
       renderQuestion(q);
     };
 

@@ -11,7 +11,8 @@ page.
 - **Plain exercises:** other exercises get a text box with a save button; this is mainly
   for testing the API.
 - **Checked questions:** multiple-choice, number and text questions, checked in the
-  browser, whose variant (numbers, options, data slice) depends on a per-student seed.
+  browser, whose variant (numbers, options, data slice) depends on a per-student seed,
+  optionally with an isolated code cell that is saved with the answers.
 - **Progress page:** a table of the site's pages with questions and how many of them
   the student has solved, linked from the navbar when signed in.
 
@@ -28,8 +29,8 @@ Used by the ETE335 test site, https://liu-nlp.ai/ete335-test/
   `AllowedOrigins`.
 - For code exercises: quarto-live. With PyTorch / Pyodide 314, use the fork
   [`khlmnn/quarto-live`](https://github.com/khlmnn/quarto-live)
-  (`quarto add khlmnn/quarto-live@v0.2.0-dev.khlmnn.1`); stock quarto-live works with its
-  default Pyodide.
+  (`quarto add khlmnn/quarto-live@v0.2.0-dev.khlmnn.3`); stock quarto-live works with its
+  default Pyodide, except that a solved question's code cell is not locked.
 
 ## Installation
 
@@ -225,15 +226,25 @@ div such as `.line-numbers`), for the code the student writes to find the answer
 Hur många berättelser i del {{part}} handlar om {{character}}?
 
 ```{.pyodide}
-stories = load_stories(part=0)
+stories = load_stories(part=...)  # skriv in delens nummer
 ```
 :::
 ````
 
-The cell is shown between the question text and the answer field and is saved like a
-code exercise, as the record `<question id>-code` (so that id must not be used by
-anything else on the page). It runs in the page's shared Python environment like any
-other cell, and is not a template: `{{placeholders}}` in it are not filled in. Text after the cell is an error.
+- The cell is shown between the question text and the answer field. Text after the cell
+  is an error.
+- It is **isolated**: it runs in a fresh Python namespace on every Run, not in the page's
+  shared one, so it sees nothing that other cells define, and other cells see nothing of
+  it. It must import what it needs itself. (The filter `ipok-pre.lua`, which runs before
+  quarto-live's, makes it a quarto-live exercise named after the question, with the
+  caption of an ordinary cell; a cell must not set `exercise` itself. "Run All Above"
+  skips it and is not shown on it.)
+- Its code and output are saved **in the question's record** (see "Stored data"): on
+  Run, on Start Over, and with every answer. They are restored like a code exercise's.
+- Once the question is solved, the cell is **locked**: read-only, with Run Code and Start
+  Over disabled (quarto-live fork, `live-lock`), and a note says so.
+- It is not a template: `{{placeholders}}` in it are not filled in. Values the student
+  needs, such as a data slice, are in the question text, and the student types them in.
 
 ### Stored data
 
@@ -244,6 +255,16 @@ written on every attempt (so the API's shadow table keeps the history):
 {"attempt": 1, "variant": "v03", "solved": true,
  "answers": [{"variant": "v02", "answer": "4", "correct": false},
              {"variant": "v03", "answer": "6", "correct": true}]}
+```
+
+A question with a code cell also stores the cell's `code` and `output` (as for a code
+exercise: `code` is `null` while it is the page's code), written on Run and Start Over
+as well, and each answer keeps the `code` that was in the cell when it was given:
+
+```json
+{"attempt": 0, "variant": "v03", "solved": true,
+ "answers": [{"variant": "v03", "answer": "6", "correct": true, "code": "stories = …"}],
+ "code": "stories = …", "output": [{"kind": "stdout", "text": "6\n"}]}
 ```
 
 The seed is the record `(course-instance, "_ipok", "_ipok", "seed")` = `{"seed": <n>}`.
@@ -356,7 +377,9 @@ Anna" the first word after the comma.
 - **Caching.** The dependency folder is named after a hash of `ipok.js` and `ipok.css`
   (`ipok-<version>-<hash>`), so browsers never keep running an old script after an update,
   even on hosts that cache files (GitHub Pages: 10 minutes).
-- **Filter order** with quarto-live doesn't matter.
+- **Filter order.** `ipok-pre.lua` runs at `pre-ast`, before quarto-live's filter, and
+  only adds options to the code cells of questions; `ipok.lua` works before or after
+  quarto-live's filter.
 
 ## What ipok relies on in quarto-live
 
@@ -366,7 +389,7 @@ the full checklist).
 
 | # | Dependency | Used for | Where in quarto-live |
 |---|---|---|---|
-| D1 | Each `{.pyodide}` cell renders as `<div id="pyodide-N" class="exercise-cell">` followed by `<script type="pyodide-N-contents">` (base64 of UTF-8 JSON `{code, attr}`), both inside the author's `.exercise` div | finding the cell of an exercise; reading the cell's initial code to detect "unchanged" | `live.lua`, `PyodideCodeBlock` |
+| D1 | Each `{.pyodide}` cell renders as `<div id="pyodide-N" class="exercise-cell">` followed by `<script type="pyodide-N-contents">` (base64 of UTF-8 JSON `{code, attr}`), both inside the author's `.exercise` or `.question` div | finding the cell of an exercise or question; reading the cell's initial code to detect "unchanged"; checking that a question's cell is an exercise (`attr.exercise`) | `live.lua`, `PyodideCodeBlock` |
 | D2 | Run (button and Ctrl/Cmd-Enter) dispatches a non-bubbling `CustomEvent("input", {detail: {commit: true}})` on the editor container; Start Over dispatches the same with an explicit `detail.code`; Run All Above (fork) runs each cell above with `detail.runAbove: true` | detecting Run (capture listener on `document`); telling Start Over and Run All Above apart | `editor.ts`: `render()`, `languageExtensions()` |
 | D3 | quarto-live's own `onInput` sets `container.value.code` to the editor text in response to that event | reading the code that was run (one tick after the event) | `editor.ts`: `onInput()` |
 | D4 | Each evaluation renders a **new** `.cell-output-container` element inside `#pyodide-N`, inserted once evaluation is complete | knowing when a run has finished and its output is complete | `evaluate-pyodide.ts` `newContainer()`, OJS template `pyodide-editor.ojs` |
@@ -374,14 +397,16 @@ the full checklist).
 | D6 | The OJS output slot in `#pyodide-N` is replaced when Pyodide has loaded; content appended *after* it survives | placing restored output so it appears immediately and survives the load | Quarto OJS runtime + `pyodide-editor.ojs` |
 | D7 | The editor is CodeMirror 6; the `EditorView` is reachable from `.cm-content` via `cmView.rootView.view` (older 6.x) or `cmTile.root.view` (newer 6.x) | writing saved code into the editor | bundled `@codemirror/view` (`EditorView.findFromDOM`) |
 | D8 | Pages need `format: live-html`; cells use ```` ```{.pyodide} ```` (not `{pyodide}`, which triggers Jupyter at render time) | authoring | Quarto + `live.lua` |
-| D9 | `ipok` and `live` filters are independent of order: `ipok` only adds `data-exercise-id` to `.exercise` divs and keeps their content | filter setup | — |
+| D9 | `ipok.lua` is independent of filter order: it only adds `data-exercise-id` to `.exercise` divs and moves a question's cell; `ipok-pre.lua` (`at: pre-ast`) runs before `live.lua`, which reads cell options from code block attributes as well as `#|` lines | filter setup | `live.lua`, `ParseBlock` |
+| D10 | A cell with `exercise: <name>` (and no `envir`) is evaluated in the environment `exercise-env-<name>`, rebuilt from scratch on every Run (with no setup block: empty), with the same output markup and editor container as other cells (D1–D7); Run All Above only runs cells of the same environment | isolating a question's cell | `pyodide-exercise.ojs`, `environment.ts` (`EnvironmentManager`), `editor.ts` (`cellsAbove`) |
+| D11 | (fork) `CustomEvent("live-lock", {detail: {locked}})` on the editor container (the parent of `.exercise-editor`) makes the editor read-only and disables Run Code, Run All Above and Start Over | locking a solved question's cell | `editor.ts`: `setLocked()` |
 
 ## Tested with
 
 | | |
 |---|---|
 | Quarto | 1.10.18; checked questions: 1.10.19 (Pandoc 3.10) |
-| quarto-live | fork `khlmnn/quarto-live` `v0.2.0-dev.khlmnn.1` (upstream `12fb30a` plus Pyodide 314.0.2 pin and button keydown fix) |
+| quarto-live | fork `khlmnn/quarto-live` `v0.2.0-dev.khlmnn.3` (upstream `12fb30a` plus the fork's changes in its `FORK.md`; `live-lock` needs `.3`) |
 | Pyodide | 314.0.2 (with `pyodide-pytorch` 2.13.0) |
 | MSAL.js | 4.13.2 (`@azure/msal-browser`, bundled; MIT, see `_extensions/ipok/msal-browser.LICENSE`) |
 | Browsers | Chromium (headless, scripted tests); Safari (used manually on the deployed test site) |
