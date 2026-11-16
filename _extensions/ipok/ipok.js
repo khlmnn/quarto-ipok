@@ -652,34 +652,6 @@
     else setQStatus(q, "");
     q.note.hidden = !!account();
     renderQuestionDebug(q);
-    publishVariants();
-  }
-
-  // ---- Variants for code cells
-  //
-  // The variant each question shows, without answer and options, as
-  // window.ipok.variants = {questionId: {id, field: value, …}}, and an
-  // "ipok:variants" event on document (detail: the same object) whenever it
-  // changes: after the seed is loaded, after a new seed (debug panel) and when
-  // an mcq question moves on. Code cells read the values the question text
-  // shows (e.g. the corpus part) from it: an OJS cell turns the event into a
-  // variable, which quarto-live passes to Python with `input:`.
-  let variantsReady = false;
-  let publishedVariants = null;
-
-  function publishVariants() {
-    if (!variantsReady) return;
-    const map = {};
-    for (const q of questions.values()) {
-      if (!q.shown) continue;
-      const { answer, options, ...fields } = q.shown;
-      map[q.id] = fields;
-    }
-    const json = JSON.stringify(map);
-    if (json === publishedVariants) return;
-    publishedVariants = json;
-    window.ipok = Object.assign(window.ipok || {}, { variants: JSON.parse(json) });
-    document.dispatchEvent(new CustomEvent("ipok:variants", { detail: JSON.parse(json) }));
   }
 
   function readAnswer(q) {
@@ -782,8 +754,6 @@
       q.submitButton.disabled = false;
       renderQuestion(q);
     }
-    variantsReady = true;
-    publishVariants();
     if (questions.size) await initDebug();
   }
 

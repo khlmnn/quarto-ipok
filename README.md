@@ -231,38 +231,7 @@ stories = load_stories(part=0)
 The cell is shown between the question text and the answer field and is saved like a
 code exercise, as the record `<question id>-code` (so that id must not be used by
 anything else on the page). It runs in the page's shared Python environment like any
-other cell, and is not a template: `{{placeholders}}` in it are not filled in (see
-the next section for reading the variant from code). Text after the cell is an error.
-
-### Variants in code cells
-
-Code cells can read the variant a student sees, so that students need not type values
-such as a data slice into their code. On a page with questions, ipok publishes the
-variant each question shows, without `answer` and `options`:
-
-```json
-{"q-count": {"id": "v07", "part": 52, "character": "Amina"}}
-```
-
-as `window.ipok.variants`, as an `ipok:variants` event on `document` (`detail`: the same
-object), and as the OJS variable `ipok_variants`, which a `live-html` page passes to
-Python with `input:`. It is published once the seed is loaded and again whenever it
-changes (a new seed in the debug panel, a new `mcq` variant after a wrong answer). A
-hidden cell that keeps it for the page's other cells:
-
-````markdown
-```{.pyodide}
-#| edit: false
-#| echo: false
-#| input:
-#|   - ipok_variants
-variants = ipok_variants  # a dict; quarto-live runs this cell again when it changes
-```
-````
-
-Cells with `input:` run in the page's shared environment, unlike quarto-live exercises
-(`exercise:`), which do not see the page's other definitions. Output already shown is
-not updated when the variant changes; the student runs the cell again.
+other cell, and is not a template: `{{placeholders}}` in it are not filled in. Text after the cell is an error.
 
 ### Stored data
 
@@ -404,7 +373,6 @@ the full checklist).
 | D7 | The editor is CodeMirror 6; the `EditorView` is reachable from `.cm-content` via `cmView.rootView.view` (older 6.x) or `cmTile.root.view` (newer 6.x) | writing saved code into the editor | bundled `@codemirror/view` (`EditorView.findFromDOM`) |
 | D8 | Pages need `format: live-html`; cells use ```` ```{.pyodide} ```` (not `{pyodide}`, which triggers Jupyter at render time) | authoring | Quarto + `live.lua` |
 | D9 | `ipok` and `live` filters are independent of order: `ipok` only adds `data-exercise-id` to `.exercise` divs and keeps their content | filter setup | — |
-| D10 | Quarto's OJS runtime reads every `<script type="ojs-module-contents">` (base64 of JSON `{contents: [{methodName, cellName, inline, source}]}`), not only quarto-live's; `input:` binds OJS variables as Python values (objects as `dict`) and re-runs the cell when they change | defining `ipok_variants` from `ipok.lua` | Quarto OJS runtime, `live.lua`, OJS template `pyodide-evaluate.ojs` |
 
 ## Tested with
 
