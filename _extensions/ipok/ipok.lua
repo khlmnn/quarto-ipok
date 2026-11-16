@@ -189,6 +189,19 @@ local function number_attr(el, name, qid, integer)
   return n
 end
 
+-- A quarto-live code cell: a {.pyodide} code block, or a div that holds one
+-- (e.g. .line-numbers), or what quarto-live made of it if its filter ran first.
+local function is_code_cell(b)
+  if b.t == "CodeBlock" then return b.classes:includes("pyodide") end
+  if b.t ~= "Div" then return false end
+  local found = false
+  b:walk({
+    CodeBlock = function(c) if c.classes:includes("pyodide") then found = true end end,
+    Div = function(d) if d.classes:includes("exercise-cell") then found = true end end,
+  })
+  return found
+end
+
 -- Turns a .question div into the markup ipok.js fills in, and returns the
 -- question's data for the page configuration.
 local function question(el, id)
@@ -198,11 +211,18 @@ local function question(el, id)
   end
 
   -- The variants: a {.variants} code block inside the div, or a JSON file.
-  local inline, content = nil, pandoc.Blocks({})
+  -- An optional code cell after the text stays out of the template, so that
+  -- it runs; ipok.js saves it like a code exercise, as record <id>-code.
+  local inline, content, code = nil, pandoc.Blocks({}), nil
   for _, b in ipairs(el.content) do
     if b.t == "CodeBlock" and b.classes:includes("variants") then
       if inline then fail("question '" .. id .. "' has more than one {.variants} block") end
       inline = b.text
+    elseif is_code_cell(b) then
+      if code then fail("question '" .. id .. "' has more than one code cell") end
+      code = b
+    elseif code then
+      fail("question '" .. id .. "': the code cell must come after the question text")
     else
       content:insert(b)
     end
@@ -255,6 +275,10 @@ local function question(el, id)
   end
   el.identifier = ""
   el.attributes["data-question-id"] = id
+  if code then
+    q.code = id .. "-code"
+    content:insert(pandoc.Div({ code }, pandoc.Attr("", { "ipok-question-code" }, { ["data-exercise-id"] = q.code })))
+  end
   el.content = content
   return el, q
 end
@@ -373,6 +397,10 @@ function Pandoc(doc)
         claim(id, "question")
         local div, q = question(el, id)
         table.insert(questions, q)
+        if q.code then
+          claim(q.code, "code cell of question '" .. id .. "'")
+          table.insert(exercises, q.code)
+        end
         return div
       end
       if not el.classes:includes("exercise") then return nil end

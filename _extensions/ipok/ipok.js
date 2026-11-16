@@ -1,5 +1,6 @@
 // IPOK Progress: sign-in button in the navbar, a save/load widget for every
-// `.exercise[data-exercise-id]` on the page (plain or code exercise),
+// `.exercise[data-exercise-id]` on the page (plain or code exercise) and for
+// the code cell of a question (`.ipok-question-code[data-exercise-id]`),
 // checked questions (`.question[data-question-id]`) whose variant depends on
 // a per-student seed, and the progress table of a `.ipok-progress` page.
 // Configuration is written by ipok.lua into
@@ -123,6 +124,8 @@
   // Any other exercise div is a *plain* exercise with a text box and PUT.
 
   const widgets = new Map(); // exerciseId -> widget
+  // Saved like a code exercise: an exercise div, or a question's code cell.
+  const EXERCISE = ".exercise[data-exercise-id], .ipok-question-code[data-exercise-id]";
 
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -175,7 +178,7 @@
   }
 
   function renderWidgets() {
-    for (const div of document.querySelectorAll(".exercise[data-exercise-id]")) {
+    for (const div of document.querySelectorAll(EXERCISE)) {
       const id = div.dataset.exerciseId;
       const cells = div.querySelectorAll(".exercise-cell[id^='pyodide-']");
       if (cells.length > 1) console.warn(`[ipok] ${id}: several code cells, only the first is saved`);
@@ -340,7 +343,7 @@
   document.addEventListener("input", (e) => {
     const d = e.detail;
     if (!(e instanceof CustomEvent) || !d || d.commit !== true) return;
-    const div = e.target.closest?.(".exercise[data-exercise-id]");
+    const div = e.target.closest?.(EXERCISE);
     const w = div && widgets.get(div.dataset.exerciseId);
     if (w?.kind !== "code" || !w.cell.contains(e.target)) return;
     if ("code" in d || d.runAbove === true) clearRestoredOutput(w);
@@ -747,6 +750,8 @@
     q.debugBox.hidden = true;
     div.append(q.body, q.input,
       el("div", { class: "ipok-buttons" }, [q.submitButton, q.newButton, q.status]), q.note, q.debugBox);
+    // A code cell (from ipok.lua) goes between the text and the answer.
+    div.querySelector(":scope > .ipok-question-code")?.before(q.body);
     setQStatus(q, t("loading"));
     q.submitButton.disabled = true;
     return q;

@@ -213,6 +213,27 @@ read-only with the student's answer. Attempts are unlimited.
   the options.
 - The variant is recomputed from the seed each time; the saved record only notes it.
 
+### A code cell in a question
+
+A question may end with one quarto-live code cell (```` ```{.pyodide} ````, also inside a
+div such as `.line-numbers`), for the code the student writes to find the answer:
+
+````markdown
+::: {.question id="q-count" type="number" variants="q-count.json"}
+Hur många berättelser i del {{part}} handlar om {{character}}?
+
+```{.pyodide}
+stories = load_stories(part=0)
+```
+:::
+````
+
+The cell is shown between the question text and the answer field and is saved like a
+code exercise, as the record `<question id>-code` (so that id must not be used by
+anything else on the page). It runs in the page's shared Python environment like any
+other cell, and is not a template: `{{placeholders}}` in it are not filled in (see
+the next section for reading the variant from code). Text after the cell is an error.
+
 ### Variants in code cells
 
 Code cells can read the variant a student sees, so that students need not type values
