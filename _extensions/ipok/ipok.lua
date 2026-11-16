@@ -22,7 +22,7 @@
 --   ::: {.ipok-progress}
 --   :::
 
-local VERSION = "0.5.1"
+local VERSION = "0.6.0"
 
 local SITE_KEYS = {
   { "client-id", "clientId" },
