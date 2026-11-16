@@ -334,14 +334,16 @@
   // quarto-live signals Run (button or Ctrl/Cmd-Enter) with a non-bubbling
   // CustomEvent("input", {detail: {commit: true}}) on the editor container;
   // "Start Over" sends the same event with an explicit `code`: it clears
-  // the output like a fresh cell but is not saved.
+  // the output like a fresh cell but is not saved. Runs started by a later
+  // cell's "Run All Above" carry `runAbove: true`; they only rebuild Python's
+  // state, so their real output replaces the restored one but is not saved.
   document.addEventListener("input", (e) => {
     const d = e.detail;
     if (!(e instanceof CustomEvent) || !d || d.commit !== true) return;
     const div = e.target.closest?.(".exercise[data-exercise-id]");
     const w = div && widgets.get(div.dataset.exerciseId);
     if (w?.kind !== "code" || !w.cell.contains(e.target)) return;
-    if ("code" in d) clearRestoredOutput(w);
+    if ("code" in d || d.runAbove === true) clearRestoredOutput(w);
     else onRun(w, e.target);
   }, true);
 

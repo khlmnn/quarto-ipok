@@ -105,7 +105,8 @@ needs `format: live-html`). Everything else is a **plain exercise**.
 ### Code exercises
 
 - Saved when the student presses **Run Code** (or Ctrl/Cmd-Enter), once the run has
-  finished. "Start Over" is not saved.
+  finished. "Start Over" is not saved, nor are runs started by a later cell's
+  "Run All Above" (in the `khlmnn/quarto-live` fork).
 - On the next visit, saved code is put back into the editor, and saved output is shown
   below it with quarto-live's own markup, as if the cell had been run. It appears before
   Pyodide has loaded, and is replaced by real output on the next Run. Start Over and
@@ -344,7 +345,7 @@ the full checklist).
 | # | Dependency | Used for | Where in quarto-live |
 |---|---|---|---|
 | D1 | Each `{.pyodide}` cell renders as `<div id="pyodide-N" class="exercise-cell">` followed by `<script type="pyodide-N-contents">` (base64 of UTF-8 JSON `{code, attr}`), both inside the author's `.exercise` div | finding the cell of an exercise; reading the cell's initial code to detect "unchanged" | `live.lua`, `PyodideCodeBlock` |
-| D2 | Run (button and Ctrl/Cmd-Enter) dispatches a non-bubbling `CustomEvent("input", {detail: {commit: true}})` on the editor container; Start Over dispatches the same with an explicit `detail.code` | detecting Run (capture listener on `document`); telling Start Over apart | `editor.ts`: `render()`, `languageExtensions()` |
+| D2 | Run (button and Ctrl/Cmd-Enter) dispatches a non-bubbling `CustomEvent("input", {detail: {commit: true}})` on the editor container; Start Over dispatches the same with an explicit `detail.code`; Run All Above (fork) runs each cell above with `detail.runAbove: true` | detecting Run (capture listener on `document`); telling Start Over and Run All Above apart | `editor.ts`: `render()`, `languageExtensions()` |
 | D3 | quarto-live's own `onInput` sets `container.value.code` to the editor text in response to that event | reading the code that was run (one tick after the event) | `editor.ts`: `onInput()` |
 | D4 | Each evaluation renders a **new** `.cell-output-container` element inside `#pyodide-N`, inserted once evaluation is complete | knowing when a run has finished and its output is complete | `evaluate-pyodide.ts` `newContainer()`, OJS template `pyodide-editor.ojs` |
 | D5 | Output markup: `div.cell-output-stdout` / `div.cell-output-stderr` (`pre > code`), `div.cell-output` (`pre > code`, last-expression value, or arbitrary HTML), `div.cell-output-display` (`img` or `canvas` for plots); errors go to stderr | reading output to save; rebuilding saved output with the same markup | `evaluate-pyodide.ts` |
