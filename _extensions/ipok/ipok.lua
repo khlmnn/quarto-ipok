@@ -42,6 +42,20 @@ local PLACEHOLDER = "{{([%a_][%w_]*)}}"
 -- Module of the per-student seed record; no page may use it.
 local RESERVED_MODULE = "_ipok"
 
+-- OJS variable with the variant each question shows, without answer and options
+-- ({questionId: {id, field: value, …}}), updated when it changes. ipok.js
+-- publishes it; on a live-html page a code cell gets it in Python with
+-- `input: [ipok_variants]`. Quarto's OJS runtime reads every
+-- ojs-module-contents script, so this works next to quarto-live's.
+local VARIANTS_OJS = [[
+ipok_variants = Generators.observe((notify) => {
+  const f = (e) => notify(e.detail);
+  document.addEventListener("ipok:variants", f);
+  if (window.ipok?.variants) notify(window.ipok.variants);
+  return () => document.removeEventListener("ipok:variants", f);
+})
+]]
+
 local function str(v)
   if v == nil then return nil end
   local s = pandoc.utils.stringify(v)
@@ -375,6 +389,11 @@ function Pandoc(doc)
   end
   config.exercises = exercises
   config.questions = questions
+  if #questions > 0 then
+    local ojs = { contents = { { methodName = "interpretQuiet", cellName = "ipok-variants", inline = false, source = VARIANTS_OJS } } }
+    doc.blocks:insert(pandoc.RawBlock("html",
+      '<script type="ojs-module-contents">\n' .. quarto.base64.encode(quarto.json.encode(ojs)) .. '\n</script>'))
+  end
 
   -- Escape "</" so the JSON cannot terminate the script element early.
   local json = quarto.json.encode(config):gsub("</", "<\\/")
