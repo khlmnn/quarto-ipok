@@ -368,6 +368,8 @@ async function testTeacherDebug(browser) {
   eq(await status(page, "q-mcq"), "Rätt!", "solve mcq");
   await Q(page, "q-mcq").getByRole("button", { name: "Återställ" }).click();
   eq(await settled("test-module", "questions", "q-mcq", (r) => !r), undefined, "Återställ deletes the record");
+  // The page re-renders only once the DELETE has returned, after the store changed.
+  await page.waitForFunction(() => / · försök 0 · /.test(document.querySelector('[data-question-id="q-mcq"] .ipok-debug-line')?.textContent), null, { timeout: 2000 }).catch(() => {});
   eq((await debugInfo(page, "q-mcq")).attempt, 0, "and resets the question");
   ok(errors.length === 0, "no console errors", errors.join("; "));
   await context.close();
