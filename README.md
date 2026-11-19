@@ -202,7 +202,8 @@ when an `mcq` question has fewer than 3 variants or a `number`/`text` question f
 
 Input that is not an answer (empty, or not a number) gives a hint and does not count as an
 attempt. Answers are never revealed. A solved question stays solved and is shown
-read-only with the student's answer. Attempts are unlimited.
+read-only with the student's answer and, when signed in, the time it was answered
+("Rätt besvarad 19 nov. 2026 14:32"). Attempts are unlimited.
 
 ### Which variant
 
@@ -253,9 +254,14 @@ written on every attempt (so the API's shadow table keeps the history):
 
 ```json
 {"attempt": 1, "variant": "v03", "solved": true,
- "answers": [{"variant": "v02", "answer": "4", "correct": false},
-             {"variant": "v03", "answer": "6", "correct": true}]}
+ "answers": [{"variant": "v02", "answer": "4", "correct": false, "at": "2026-11-19T13:31:02.417Z"},
+             {"variant": "v03", "answer": "6", "correct": true, "at": "2026-11-19T13:32:40.105Z"}]}
 ```
+
+`at` is the time of the answer (ISO 8601, UTC) from the browser's clock, which the
+student can set; it is for display, not for deadlines. The record's `Completed` in
+the database is no substitute: the backend sets it only when the record is created,
+without a time zone.
 
 A question with a code cell also stores the cell's `code` and `output` (as for a code
 exercise: `code` is `null` while it is the page's code), written on Run and Start Over
@@ -263,7 +269,7 @@ as well, and each answer keeps the `code` that was in the cell when it was given
 
 ```json
 {"attempt": 0, "variant": "v03", "solved": true,
- "answers": [{"variant": "v03", "answer": "6", "correct": true, "code": "stories = …"}],
+ "answers": [{"variant": "v03", "answer": "6", "correct": true, "at": "…", "code": "stories = …"}],
  "code": "stories = …", "output": [{"kind": "stdout", "text": "6\n"}]}
 ```
 

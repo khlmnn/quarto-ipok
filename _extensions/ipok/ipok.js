@@ -396,8 +396,8 @@
   // number and text questions always show the first. The state of a question
   // is saved as an ordinary progress record, {attempt, variant, solved,
   // answers}, plus {code, output} of its code cell if it has one; each answer
-  // also keeps the code that was in the cell. A solved question's cell is
-  // locked.
+  // also keeps the code that was in the cell and the time it was given (`at`,
+  // from the browser's clock). A solved question's cell is locked.
   //
   // The seed is the record (_ipok, _ipok, seed) = {"seed": <uint32>}, created at
   // first sign-in as the first 4 bytes of SHA-256("<course-instance>:<account
@@ -414,6 +414,7 @@
       empty: "Enter an answer.", choose: "Choose an option.", signIn: "Sign in to save your answers.",
       loading: "Loading…", loadFailed: "Could not load the question: ", saveFailed: "Could not save your answer: ",
       answerLabel: "Your answer", locked: "Solved: the code can no longer be changed.",
+      solvedAt: "Answered correctly ",
       saveCodeFailed: "Could not save your code: ", loadCodeFailed: "Could not load your saved code: ",
       restoreFailed: "Your saved code could not be put back into the editor.",
       dSeed: "Seed", dRead: "Read", dSave: "Save", dDerived: "Reset to derived", dRandom: "New random",
@@ -430,6 +431,7 @@
       empty: "Skriv ett svar.", choose: "Välj ett alternativ.", signIn: "Logga in för att spara dina svar.",
       loading: "Laddar …", loadFailed: "Kunde inte ladda frågan: ", saveFailed: "Kunde inte spara ditt svar: ",
       answerLabel: "Ditt svar", locked: "Löst: koden kan inte ändras längre.",
+      solvedAt: "Rätt besvarad ",
       saveCodeFailed: "Kunde inte spara din kod: ", loadCodeFailed: "Kunde inte ladda din sparade kod: ",
       restoreFailed: "Din sparade kod kunde inte läggas tillbaka i cellen.",
       dSeed: "Seed", dRead: "Läs", dSave: "Spara", dDerived: "Återställ härledd", dRandom: "Ny slumpad",
@@ -663,7 +665,32 @@
     q.status.className = "ipok-status " + kind;
   }
 
-  const lastCorrect = (q) => [...q.state.answers].reverse().find((a) => a.correct)?.answer;
+  const lastCorrectEntry = (q) => [...q.state.answers].reverse().find((a) => a?.correct);
+  const lastCorrect = (q) => lastCorrectEntry(q)?.answer;
+
+  // An answer's time, or null for answers saved before times were kept.
+  function answerTime(entry) {
+    const ms = typeof entry?.at === "string" ? Date.parse(entry.at) : NaN;
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  const formatTime = (ms) =>
+    new Intl.DateTimeFormat(cfg.lang || "en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(ms));
+
+  // Below the question: the sign-in note when signed out, and the time a
+  // solved question was answered when signed in.
+  function renderNote(q) {
+    const at = q.state.solved ? answerTime(lastCorrectEntry(q)) : null;
+    if (!account()) {
+      q.note.textContent = t("signIn");
+      q.note.hidden = false;
+    } else if (at !== null) {
+      q.note.textContent = t("solvedAt") + formatTime(at);
+      q.note.hidden = false;
+    } else {
+      q.note.hidden = true;
+    }
+  }
 
   // q.view is "answering", or "wrong" while a wrongly answered mcq variant
   // waits for "New question" (see renderWrong); rendering anew ends that.
@@ -701,7 +728,7 @@
     if (solved) setQStatus(q, t("correct"), "ok");
     else if (q.hint) setQStatus(q, q.hint, q.hintKind || "");
     else setQStatus(q, "");
-    q.note.hidden = !!account();
+    renderNote(q);
     if (q.codeWidget) {
       q.lockNote.hidden = !solved;
       if (solved !== q.codeWidget.locked) setLocked(q.codeWidget, solved);
@@ -724,7 +751,7 @@
       return;
     }
     const s = q.state;
-    const entry = { variant: v.id, answer: value, correct: r.correct };
+    const entry = { variant: v.id, answer: value, correct: r.correct, at: new Date().toISOString() };
     if (q.codeWidget) {
       const code = editorCode(q.codeWidget);
       entry.code = code === null ? null : savedCode(q.codeWidget, code);

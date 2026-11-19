@@ -311,7 +311,9 @@ async function testSignedIn(browser) {
   eq(await page.locator('.exercise[data-exercise-id="ex-plain"] .ipok-status').textContent(), "nothing saved yet", "exercise widget still loads");
 
   await answer(page, "q-decimals", "1");
-  eq(await settled("test-module", "questions", "q-decimals", (r) => r),
+  const wrong = await settled("test-module", "questions", "q-decimals", (r) => r);
+  ok(!Number.isNaN(Date.parse(wrong?.answers?.[0]?.at)), "answer saved with its time", JSON.stringify(wrong));
+  eq({ ...wrong, answers: wrong.answers.map(({ at, ...a }) => a) },
     { attempt: 1, variant: "v01", solved: false, answers: [{ variant: "v01", answer: "1", correct: false }] }, "wrong answer saved");
   await answer(page, "q-decimals", "0.33");
   const r = await settled("test-module", "questions", "q-decimals", (r) => r?.solved);
@@ -330,6 +332,9 @@ async function testSignedIn(browser) {
   ({ page, context, errors } = await openPage(browser, { roles: ["Student"] }));
   eq(await status(page, "q-decimals"), "Rätt!", "solved question restored after reload");
   eq(await Q(page, "q-decimals").locator("input.ipok-answer").inputValue(), "0.33", "with the student's answer");
+  ok(/^Rätt besvarad \d+ \S+ \d{4} \d\d:\d\d$/.test(await Q(page, "q-decimals").locator(".ipok-question-note").textContent()),
+    "and the time it was answered", await Q(page, "q-decimals").locator(".ipok-question-note").textContent());
+  ok(await Q(page, "q-number").locator(".ipok-question-note").isHidden(), "no note on an unsolved question");
   ok(await Q(page, "q-mcq").locator(".ipok-question-input").textContent() !== mcqText, "after reload, the mcq shows the next variant");
   eq(await status(page, "q-mcq"), "", "and can be answered");
   ok(errors.length === 0, "no console errors", errors.join("; "));
