@@ -58,6 +58,7 @@ const BAD = [
   ["id clash with exercise", q(`id="a" type="text"`, "x", `[{"id":"v","answer":"y"}]`) + `\n\n::: {.exercise id="a"}\n:::`, "duplicate exercise or question id 'a'"],
   ["decimals on text", q(`id="a" type="text" decimals="2"`, "x", `[{"id":"v","answer":"y"}]`), "only allowed in number questions"],
   ["bad ipok-name part", `{{< ipok-name part="last" >}}`, 'part must be "first"'],
+  ["bad cooldown", q(`id="a" type="text" cooldown="10, x"`, "x", `[{"id":"v","answer":"y"}]`), "cooldown value 'x' must be a non-negative integer"],
   ["missing file", `::: {.question id="a" type="text" variants="nope.json"}\nx\n:::`, "cannot read variants file nope.json"],
 ];
 
@@ -341,6 +342,56 @@ async function testSignedIn(browser) {
   await context.close();
 }
 
+async function testCooldown(browser) {
+  console.log("cooldown, signed in");
+  store.clear();
+  const T0 = new Date("2026-11-19T13:00:00Z");
+  const clock = { setup: (c) => c.clock.install({ time: T0 }) };
+  let { page, context, errors } = await openPage(browser, { roles: ["Student"], path: "cooldown.html", ...clock });
+  const submitButton = Q(page, "q-wait").getByRole("button", { name: "Svara" });
+
+  await answer(page, "q-wait", "5");
+  eq(await status(page, "q-wait"), "Fel, försök igen.", "no wait after the first wrong answer (cooldown 0)");
+  ok(await submitButton.isEnabled(), "and the answer button stays enabled");
+  await answer(page, "q-wait", "6");
+  ok(/^Fel, försök igen om (9|10) s\.$/.test(await status(page, "q-wait")), "second wrong answer: countdown", await status(page, "q-wait"));
+  ok(await submitButton.isDisabled(), "answer button disabled while waiting");
+  await Q(page, "q-wait").locator("input.ipok-answer").fill("7");
+  await Q(page, "q-wait").locator("input.ipok-answer").press("Enter");
+  eq((await settled("test-module", "cooldown", "q-wait", (r) => r?.answers?.length === 2))?.answers?.length, 2, "Enter does not answer while waiting");
+  await page.clock.fastForward(11000);
+  eq(await status(page, "q-wait"), "Fel, försök igen.", "after the wait: back to the hint");
+  ok(await submitButton.isEnabled(), "and the button is enabled");
+
+  await answer(page, "q-wait", "7");
+  ok(/^Fel, försök igen om 1 min( \d+ s)?\.$/.test(await status(page, "q-wait")), "third wrong answer: the last value (90 s)", await status(page, "q-wait"));
+  await settled("test-module", "cooldown", "q-wait", (r) => r?.answers?.length === 3);
+  await page.reload();
+  await page.waitForFunction(() => [...document.querySelectorAll(".question .ipok-status")].every((s) => !/Laddar/.test(s.textContent)));
+  ok(/^Du kan svara igen om 1 min( \d+ s)?\.$/.test(await status(page, "q-wait")), "the wait survives a reload", await status(page, "q-wait"));
+  ok(await submitButton.isDisabled(), "with the button disabled");
+  await page.clock.fastForward(91000);
+  eq(await status(page, "q-wait"), "", "after the wait: no status");
+  await answer(page, "q-wait", "4");
+  eq(await status(page, "q-wait"), "Rätt!", "right answer after the wait");
+
+  // MCQ: the wait is on "Ny fråga".
+  const mcq = Q(page, "q-wait-mcq");
+  const options = await mcq.locator("input[type=radio]").evaluateAll((xs) => xs.map((x) => x.value));
+  const lowest = options.reduce((a, b) => (Number(a) < Number(b) ? a : b));
+  await answer(page, "q-wait-mcq", lowest);
+  ok(/^Fel\. Ny fråga om [45] s\.$/.test(await status(page, "q-wait-mcq")), "wrong mcq answer: countdown", await status(page, "q-wait-mcq"));
+  ok(await mcq.getByRole("button", { name: "Ny fråga" }).isDisabled(), "'Ny fråga' disabled while waiting");
+  await page.clock.fastForward(6000);
+  eq(await status(page, "q-wait-mcq"), "Fel.", "after the wait: 'Fel.'");
+  await mcq.getByRole("button", { name: "Ny fråga" }).click();
+  const next = await mcq.locator("input[type=radio]").evaluateAll((xs) => xs.map((x) => x.value));
+  ok(next.join() !== options.join(), "'Ny fråga' shows the next variant");
+  ok(await mcq.getByRole("button", { name: "Svara" }).isEnabled(), "which can be answered at once");
+  ok(errors.length === 0, "no console errors", errors.join("; "));
+  await context.close();
+}
+
 async function testTeacherDebug(browser) {
   console.log("signed in, teacher debug panel");
   store.clear();
@@ -402,9 +453,9 @@ async function testProgress(browser) {
   await page.waitForSelector(".ipok-progress-table");
   const rows = await page.locator(".ipok-progress-table tbody tr").evaluateAll((trs) =>
     trs.map((tr) => [tr.querySelector("a").textContent, tr.querySelector("a").getAttribute("href"), tr.lastChild.textContent]));
-  eq(rows, [["Questions", "questions.html", "1 / 7"], ["More questions", "sub/more.html", "1 / 1"]],
+  eq(rows, [["Cooldown", "cooldown.html", "0 / 2"], ["Questions", "questions.html", "1 / 7"], ["More questions", "sub/more.html", "1 / 1"]],
     "one row per page with questions, in path order, counting only solved questions on the page");
-  eq(await page.locator(".ipok-progress-table tfoot").textContent(), "Totalt2 / 8", "total row");
+  eq(await page.locator(".ipok-progress-table tfoot").textContent(), "Totalt2 / 10", "total row");
   ok(await page.locator('.ipok-progress-table tr[data-section="test-module/more"] td:last-child.ok').count() === 1, "a finished page is marked");
   ok(await page.locator(".ipok-gate").isHidden(), "some questions unsolved: gate hidden");
   ok(await page.locator(".ipok-gate-closed").isVisible(), "some questions unsolved: closed gate shown");
@@ -415,9 +466,11 @@ async function testProgress(browser) {
   // Every question solved: the gate opens.
   for (const id of ["q-number", "q-decimals", "q-half", "q-text", "q-case", "q-mcq", "q-file"])
     put("questions", id, { attempt: 0, variant: "v01", solved: true, answers: [] });
+  for (const id of ["q-wait", "q-wait-mcq"])
+    put("cooldown", id, { attempt: 0, variant: "v01", solved: true, answers: [] });
   ({ page, context, errors } = await openPage(browser, { roles: ["Student"], path: "progress.html" }));
   await page.waitForSelector(".ipok-progress-table");
-  eq(await page.locator(".ipok-progress-table tfoot").textContent(), "Totalt8 / 8", "all solved: total row");
+  eq(await page.locator(".ipok-progress-table tfoot").textContent(), "Totalt10 / 10", "all solved: total row");
   ok(await page.locator(".ipok-gate").isVisible(), "all solved: gate shown");
   ok(await page.locator(".ipok-gate-closed").isHidden(), "all solved: closed gate hidden");
   ok(errors.length === 0, "no console errors", errors.join("; "));
@@ -457,6 +510,7 @@ if (!only || only !== "errors") {
     await testSignedOut(browser);
     await testDebugLocal(browser);
     await testSignedIn(browser);
+    await testCooldown(browser);
     await testTeacherDebug(browser);
     await testProgress(browser);
   } finally {

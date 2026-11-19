@@ -58,6 +58,7 @@ ipok:
   scope: https://liuonline.onmicrosoft.com/ida-spacy-progress-api-test-ar/user_impersonation
   course-instance: ete335-quarto-test
   progress-page: min-sida.html   # optional
+  cooldown: [0, 10, 30, 60, 120]  # optional
 ```
 
 | Key | Meaning |
@@ -68,6 +69,7 @@ ipok:
 | `scope` | the Progress API scope to request a token for |
 | `course-instance` | the API's `courseInstanceId`, i.e. the namespace for this site's data |
 | `progress-page` | optional: the [progress page](#progress-page), relative to the site root; signed-in users get a link to it in the navbar |
+| `cooldown` | optional: the default [wait after wrong answers](#waiting-after-wrong-answers) for checked questions |
 
 Client and tenant IDs are public identifiers, not secrets. Login only works at the
 registered redirect URI, so it does not work under `quarto preview` on `localhost`
@@ -203,7 +205,37 @@ when an `mcq` question has fewer than 3 variants or a `number`/`text` question f
 Input that is not an answer (empty, or not a number) gives a hint and does not count as an
 attempt. Answers are never revealed. A solved question stays solved and is shown
 read-only with the student's answer and, when signed in, the time it was answered
-("Rätt besvarad 19 nov. 2026 14:32"). Attempts are unlimited.
+("Rätt besvarad 19 nov. 2026 14:32"). Attempts are unlimited, but may have to wait
+(see the next section).
+
+### Waiting after wrong answers
+
+A cooldown schedule makes a student wait after wrong answers, so that guessing many
+similar answers, or clicking through `mcq` variants, takes time:
+
+```yaml
+ipok:
+  cooldown: [0, 10, 30, 60, 120]   # site default; also "0, 10, 30, 60, 120"
+```
+
+```markdown
+::: {.question id="q-count" type="number" variants="q-count.json" cooldown="0, 30"}
+```
+
+- The values are the seconds to wait after the 1st, 2nd, … wrong answer to the
+  question; the last value repeats. Above, the first wrong answer has no wait (a typo),
+  the second 10 s, the fifth and every later one 2 min.
+- A question's `cooldown="…"` replaces the site default; `cooldown="0"` turns it off.
+  Without either, there is no wait.
+- While waiting, "Svara" (for `number` and `text`) or "Ny fråga" (after a wrong `mcq`
+  answer) is disabled and the status line counts down ("Fel, försök igen om 25 s.").
+- The wait runs from the time of the last answer (`at` in the record), so it survives a
+  reload when signed in. Signed out, nothing survives a reload anyway. Answers saved
+  without a time (before ipok 0.9) have no wait.
+- **It only slows students down.** Answers are checked in the browser: the variant
+  tables, answers included, are part of the page, and the times come from the
+  browser's clock. A student who opens the developer tools gets around it. The times
+  in the records (and the API's history of them) show who answered how fast.
 
 ### Which variant
 
@@ -259,9 +291,9 @@ written on every attempt (so the API's shadow table keeps the history):
 ```
 
 `at` is the time of the answer (ISO 8601, UTC) from the browser's clock, which the
-student can set; it is for display, not for deadlines. The record's `Completed` in
-the database is no substitute: the backend sets it only when the record is created,
-without a time zone.
+student can set; it is for display and the cooldown, not for deadlines. The record's
+`Completed` in the database is no substitute: the backend sets it only when the record
+is created, without a time zone.
 
 A question with a code cell also stores the cell's `code` and `output` (as for a code
 exercise: `code` is `null` while it is the page's code), written on Run and Start Over

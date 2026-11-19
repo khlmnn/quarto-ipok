@@ -397,7 +397,10 @@
   // is saved as an ordinary progress record, {attempt, variant, solved,
   // answers}, plus {code, output} of its code cell if it has one; each answer
   // also keeps the code that was in the cell and the time it was given (`at`,
-  // from the browser's clock). A solved question's cell is locked.
+  // from the browser's clock). A solved question's cell is locked. With a
+  // cooldown schedule, the next answer (or "New question") waits a number of
+  // seconds after each wrong answer; the schedule and the clock are in the
+  // browser, so this only slows students down.
   //
   // The seed is the record (_ipok, _ipok, seed) = {"seed": <uint32>}, created at
   // first sign-in as the first 4 bytes of SHA-256("<course-instance>:<account
@@ -414,7 +417,8 @@
       empty: "Enter an answer.", choose: "Choose an option.", signIn: "Sign in to save your answers.",
       loading: "Loading…", loadFailed: "Could not load the question: ", saveFailed: "Could not save your answer: ",
       answerLabel: "Your answer", locked: "Solved: the code can no longer be changed.",
-      solvedAt: "Answered correctly ",
+      solvedAt: "Answered correctly ", waitWrong: "Wrong, try again in {t}.", waitNew: "Wrong. New question in {t}.",
+      waitAnswer: "You can answer again in {t}.",
       saveCodeFailed: "Could not save your code: ", loadCodeFailed: "Could not load your saved code: ",
       restoreFailed: "Your saved code could not be put back into the editor.",
       dSeed: "Seed", dRead: "Read", dSave: "Save", dDerived: "Reset to derived", dRandom: "New random",
@@ -431,7 +435,8 @@
       empty: "Skriv ett svar.", choose: "Välj ett alternativ.", signIn: "Logga in för att spara dina svar.",
       loading: "Laddar …", loadFailed: "Kunde inte ladda frågan: ", saveFailed: "Kunde inte spara ditt svar: ",
       answerLabel: "Ditt svar", locked: "Löst: koden kan inte ändras längre.",
-      solvedAt: "Rätt besvarad ",
+      solvedAt: "Rätt besvarad ", waitWrong: "Fel, försök igen om {t}.", waitNew: "Fel. Ny fråga om {t}.",
+      waitAnswer: "Du kan svara igen om {t}.",
       saveCodeFailed: "Kunde inte spara din kod: ", loadCodeFailed: "Kunde inte ladda din sparade kod: ",
       restoreFailed: "Din sparade kod kunde inte läggas tillbaka i cellen.",
       dSeed: "Seed", dRead: "Läs", dSave: "Spara", dDerived: "Återställ härledd", dRandom: "Ny slumpad",
@@ -677,6 +682,68 @@
   const formatTime = (ms) =>
     new Intl.DateTimeFormat(cfg.lang || "en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(ms));
 
+  // ---- Cooldown
+  //
+  // q.cooldown (from ipok.lua) lists the seconds to wait after the 1st, 2nd,
+  // … wrong answer, the last value repeating. The wait runs from the time of
+  // the last answer, so it survives a reload when signed in (signed out,
+  // nothing survives a reload). A clock set back cannot make it longer than
+  // the schedule says.
+
+  function cooldownLeft(q, now = Date.now()) {
+    const waits = q.cooldown;
+    const s = q.state;
+    if (!Array.isArray(waits) || !waits.length || s.solved || !s.answers.length) return 0;
+    const last = s.answers[s.answers.length - 1];
+    if (!last || last.correct !== false) return 0;
+    const wrong = s.answers.filter((a) => a?.correct === false).length;
+    const wait = 1000 * (waits[Math.min(wrong, waits.length) - 1] || 0);
+    const at = answerTime(last);
+    if (!wait || at === null) return 0;
+    return Math.min(wait, Math.max(0, at + wait - now));
+  }
+
+  function formatWait(seconds) {
+    if (seconds < 60) return `${seconds} s`;
+    const m = Math.floor(seconds / 60), r = seconds % 60;
+    return r ? `${m} min ${r} s` : `${m} min`;
+  }
+
+  // The status line when there is nothing to wait for.
+  function restStatus(q) {
+    if (q.state.solved) setQStatus(q, t("correct"), "ok");
+    else if (q.view === "wrong") setQStatus(q, t("wrong"), "err");
+    else if (q.hint) setQStatus(q, q.hint, q.hintKind || "");
+    else setQStatus(q, "");
+  }
+
+  // Disables the button that leads to the next answer ("Answer", or "New
+  // question" after a wrong mcq answer) while the cooldown runs, with a
+  // countdown in the status line.
+  function startCooldown(q) {
+    clearInterval(q.timer);
+    q.timer = null;
+    const button = q.view === "wrong" ? q.newButton : q.submitButton;
+    const key = q.view === "wrong" ? "waitNew" : q.hint ? "waitWrong" : "waitAnswer";
+    const tick = () => {
+      const left = Math.ceil(cooldownLeft(q) / 1000);
+      button.disabled = left > 0;
+      if (left > 0) {
+        setQStatus(q, t(key).replace("{t}", formatWait(left)), "err");
+      } else {
+        clearInterval(q.timer);
+        q.timer = null;
+        restStatus(q);
+      }
+    };
+    if (cooldownLeft(q) > 0) {
+      tick();
+      q.timer = setInterval(tick, 1000);
+    } else {
+      button.disabled = false;
+    }
+  }
+
   // Below the question: the sign-in note when signed out, and the time a
   // solved question was answered when signed in.
   function renderNote(q) {
@@ -725,9 +792,8 @@
 
     q.submitButton.hidden = solved;
     q.newButton.hidden = true;
-    if (solved) setQStatus(q, t("correct"), "ok");
-    else if (q.hint) setQStatus(q, q.hint, q.hintKind || "");
-    else setQStatus(q, "");
+    restStatus(q);
+    startCooldown(q);
     renderNote(q);
     if (q.codeWidget) {
       q.lockNote.hidden = !solved;
@@ -742,7 +808,7 @@
   }
 
   function submit(q) {
-    if (q.state.solved || q.view !== "answering") return;
+    if (q.state.solved || q.view !== "answering" || cooldownLeft(q) > 0) return;
     const v = q.shown;
     const value = readAnswer(q);
     const r = check(q, v, value);
@@ -786,6 +852,7 @@
     q.submitButton.hidden = true;
     q.newButton.hidden = false;
     setQStatus(q, t("wrong"), "err");
+    startCooldown(q);
     renderQuestionDebug(q, v);
   }
 
@@ -804,7 +871,7 @@
       debugBox: el("div", { class: "ipok-question-debug" }),
     };
     q.submitButton.onclick = () => submit(q);
-    q.newButton.onclick = () => renderQuestion(q);
+    q.newButton.onclick = () => { if (cooldownLeft(q) === 0) renderQuestion(q); };
     q.newButton.hidden = true;
     q.debugBox.hidden = true;
     div.append(q.body, q.input,

@@ -1,0 +1,23 @@
+---
+title: Cooldown
+module-id: test-module
+section-id: cooldown
+---
+
+::: {.question id="q-wait" type="number" cooldown="0, 10, 90"}
+Hur mycket är 2 + 2?
+
+```{.variants}
+[{"id": "v01", "answer": 4}]
+```
+:::
+
+::: {.question id="q-wait-mcq" type="mcq" cooldown="5"}
+Vilket tal är störst?
+
+```{.variants}
+[{"id": "v01", "options": ["1", "2", "3"], "answer": "3"},
+ {"id": "v02", "options": ["4", "5", "6"], "answer": "6"},
+ {"id": "v03", "options": ["7", "8", "9"], "answer": "9"}]
+```
+:::

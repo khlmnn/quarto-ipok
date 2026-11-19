@@ -3,6 +3,7 @@
 -- Site configuration (in _quarto.yml):
 --   ipok:
 --     client-id, tenant-id, redirect-uri, api-base, scope, course-instance
+--     cooldown (optional; see the README, "Waiting after wrong answers")
 -- Page metadata (top-level, since Quarto merges maps shallowly):
 --   module-id: <moduleId>
 --   section-id: <sectionId>
@@ -41,6 +42,8 @@ local MIN_VARIANTS = { mcq = 3, number = 10, text = 10 }
 local PLACEHOLDER = "{{([%a_][%w_]*)}}"
 -- Module of the per-student seed record; no page may use it.
 local RESERVED_MODULE = "_ipok"
+-- The site's cooldown schedule (ipok.cooldown), the default for questions.
+local site_cooldown = nil
 
 local function str(v)
   if v == nil then return nil end
@@ -175,6 +178,29 @@ local function number_attr(el, name, qid, integer)
   return n
 end
 
+-- A cooldown schedule: the seconds to wait after the 1st, 2nd, … wrong answer
+-- to a question, the last value repeating. From "0, 10, 30" or a YAML list;
+-- nil if every value is 0.
+local function parse_cooldown(v, where)
+  local items = {}
+  if pandoc.utils.type(v) == "List" then
+    for _, x in ipairs(v) do table.insert(items, str(x) or "") end
+  else
+    for part in (str(v) or ""):gmatch("[^,%s]+") do table.insert(items, part) end
+  end
+  if #items == 0 then fail(where .. ": cooldown is empty") end
+  local waits, any = {}, false
+  for _, item in ipairs(items) do
+    local n = tonumber(item)
+    if n == nil or n < 0 or math.type(n) ~= "integer" then
+      fail(where .. ": cooldown value '" .. item .. "' must be a non-negative integer (seconds)")
+    end
+    if n > 0 then any = true end
+    table.insert(waits, n)
+  end
+  return any and waits or nil
+end
+
 -- A quarto-live code cell: a {.pyodide} code block, or a div that holds one
 -- (e.g. .line-numbers), or what quarto-live made of it if its filter ran first.
 local function is_code_cell(b)
@@ -269,13 +295,18 @@ local function question(el, id)
     if q.type ~= "text" then fail("question '" .. id .. "': ignore-case is only allowed in text questions") end
     q.ignoreCase = true
   end
+  if el.attributes["cooldown"] then
+    q.cooldown = parse_cooldown(el.attributes["cooldown"], "question '" .. id .. "'")
+  else
+    q.cooldown = site_cooldown
+  end
 
   -- The question text goes into a <template>, which the browser keeps out of
   -- the page (and out of MathJax's first pass); ipok.js clones it, fills in
   -- the placeholders and typesets the result.
   content:insert(1, pandoc.RawBlock("html", '<template class="ipok-question-template">'))
   content:insert(pandoc.RawBlock("html", "</template>"))
-  for _, k in ipairs({ "id", "type", "variants", "tolerance", "decimals" }) do
+  for _, k in ipairs({ "id", "type", "variants", "tolerance", "decimals", "cooldown" }) do
     el.attributes[k] = nil
   end
   el.identifier = ""
@@ -374,6 +405,7 @@ function Pandoc(doc)
   config.module = str(doc.meta["module-id"])
   config.section = str(doc.meta["section-id"])
   config.lang = str(doc.meta["lang"]) or "en"
+  site_cooldown = meta["cooldown"] ~= nil and parse_cooldown(meta["cooldown"], "site option ipok.cooldown") or nil
   -- Optional: a page with an .ipok-progress div, relative to the site root;
   -- signed-in users get a link to it in the navbar.
   local progress_page = str(meta["progress-page"])
