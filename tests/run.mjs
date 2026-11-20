@@ -201,6 +201,7 @@ async function answer(page, id, value) {
 async function testSignedOut(browser) {
   console.log("signed out");
   const { page, context, errors } = await openPage(browser, { seed: 42 });
+  eq(await page.locator(".ipok-auth button").textContent(), "Logga in", "sign-in button follows the site language");
   const text = await page.locator("main").textContent();
   ok(!text.includes("{{"), "no unfilled placeholders");
   const code = await Q(page, "q-file").locator("pre code").textContent();
@@ -307,9 +308,10 @@ async function testSignedIn(browser) {
   store.clear();
   let { page, context, errors } = await openPage(browser, { roles: ["Student"], query: "?ipok-debug" });
   eq(record("_ipok", "_ipok", "seed"), { seed: derivedSeed() }, "seed record created from the account");
+  eq(await page.locator(".ipok-auth button").textContent(), "Logga ut", "sign-out button follows the site language");
   ok(!(await page.locator(".ipok-debug-panel").count()), "no debug panel without the Teacher role");
   ok(!(await Q(page, "q-number").locator(".ipok-question-note").isVisible()), "no sign-in note");
-  eq(await page.locator('.exercise[data-exercise-id="ex-plain"] .ipok-status').textContent(), "nothing saved yet", "exercise widget still loads");
+  eq(await page.locator('.exercise[data-exercise-id="ex-plain"] .ipok-status').textContent(), "inget sparat än", "exercise widget still loads");
 
   await answer(page, "q-decimals", "1");
   const wrong = await settled("test-module", "questions", "q-decimals", (r) => r);

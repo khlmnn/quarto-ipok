@@ -5,6 +5,8 @@ work on exercises to the IPOK Progress API, so it is restored the next time they
 page.
 
 - **Sign-in:** a Sign in / Sign out button in the navbar (MSAL.js, redirect flow).
+- **Language:** all interface texts, the sign-in button included, follow the page's
+  `lang` (Swedish and English built in, English otherwise).
 - **Code exercises:** for exercises containing a [quarto-live](https://github.com/r-wasm/quarto-live)
   Pyodide cell, the code and its output are saved when the student presses **Run Code**,
   and both are restored on the next visit, as if the cell had been run.

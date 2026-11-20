@@ -28,7 +28,7 @@
 
   async function getToken() {
     const a = account();
-    if (!a) throw new Error("Not signed in");
+    if (!a) throw new Error(t("notSignedIn"));
     try {
       const r = await msalApp.acquireTokenSilent({ scopes: [cfg.scope], account: a });
       return r.accessToken;
@@ -106,11 +106,11 @@
     if (a) {
       authBox.appendChild(el("span", { class: "ipok-user", text: a.name || a.username, title: a.username }));
       if (cfg.progressPage) authBox.appendChild(el("a", { class: "ipok-progress-link", href: cfg.progressPage, text: t("myPage") }));
-      const b = el("button", { class: "btn btn-sm btn-outline-light", type: "button", text: "Sign out" });
+      const b = el("button", { class: "btn btn-sm btn-outline-light", type: "button", text: t("signOut") });
       b.onclick = logout;
       authBox.appendChild(b);
     } else {
-      const b = el("button", { class: "btn btn-sm btn-light", type: "button", text: "Sign in" });
+      const b = el("button", { class: "btn btn-sm btn-light", type: "button", text: t("signInButton") });
       b.onclick = login;
       authBox.appendChild(b);
     }
@@ -147,10 +147,10 @@
     const status = el("span", { class: "ipok-status" });
     const stored = el("pre", { class: "ipok-stored" });
     stored.hidden = true;
-    const input = el("textarea", { class: "form-control", "aria-label": `Data for ${id}` });
+    const input = el("textarea", { class: "form-control", "aria-label": t("plainData").replace("{id}", id) });
     input.value = sampleData(id);
-    const put = el("button", { class: "btn btn-sm btn-primary", type: "button", text: "Save (PUT)" });
-    const del = el("button", { class: "btn btn-sm btn-outline-danger", type: "button", text: "Delete" });
+    const put = el("button", { class: "btn btn-sm btn-primary", type: "button", text: t("plainSave") });
+    const del = el("button", { class: "btn btn-sm btn-outline-danger", type: "button", text: t("plainDelete") });
     const w = { kind: "plain", id, status, stored, input, buttons: [put, del] };
     put.onclick = () => save(w, input.value);
     del.onclick = () => remove(w);
@@ -191,7 +191,7 @@
     for (const w of widgets.values()) {
       w.buttons.forEach((b) => (b.disabled = !signedIn));
       if (w.input) w.input.disabled = !signedIn;
-      if (!signedIn && w.kind === "plain") setStatus(w, "sign in to load and save");
+      if (!signedIn && w.kind === "plain") setStatus(w, t("plainSignIn"));
     }
   }
 
@@ -207,10 +207,10 @@
     }
     if (!ex) {
       w.stored.hidden = true;
-      setStatus(w, "nothing saved yet");
+      setStatus(w, t("plainNothing"));
       return;
     }
-    setStatus(w, `saved ${new Date(ex.completed).toLocaleString()}`, "ok");
+    setStatus(w, t("plainSaved") + new Date(ex.completed).toLocaleString(cfg.lang || "en"), "ok");
     w.stored.hidden = false;
     w.stored.textContent = ex.exerciseData ?? "";
   }
@@ -300,8 +300,8 @@
         box.appendChild(el("div", { class: `exercise-cell-output cell-output cell-output-pyodide cell-output-${o.kind}` }, [pre(o.text ?? "")]));
       } else if (o.kind === "image") {
         const node = IMAGE_URL.test(o.src || "")
-          ? el("img", { src: o.src, alt: "Saved plot", class: "img-fluid figure-img", ...(Number(o.width) > 0 ? { style: `width: ${Number(o.width)}px;` } : {}) })
-          : el("em", { text: "(image not saved)" });
+          ? el("img", { src: o.src, alt: t("savedPlot"), class: "img-fluid figure-img", ...(Number(o.width) > 0 ? { style: `width: ${Number(o.width)}px;` } : {}) })
+          : el("em", { text: t("imageNotSaved") });
         box.appendChild(el("div", { class: "cell-output-display cell-output-pyodide" }, [node]));
       } else {
         box.appendChild(el("div", { class: "cell-output cell-output-pyodide" }, [pre(o.text ?? "")]));
@@ -428,6 +428,11 @@
       myPage: "My page", pPage: "Page", pSolved: "Solved", pTotal: "Total",
       pSignIn: "Sign in to see your progress.", pNone: "There are no questions yet.",
       pLoadFailed: "could not be loaded",
+      signInButton: "Sign in", signOut: "Sign out", notSignedIn: "Not signed in",
+      savedPlot: "Saved plot", imageNotSaved: "(image not saved)",
+      plainData: "Data for {id}", plainSave: "Save (PUT)", plainDelete: "Delete",
+      plainSignIn: "sign in to load and save", plainNothing: "nothing saved yet", plainSaved: "saved ",
+      plainSaving: "saving…", plainLoadFailed: "load failed: ", plainSaveFailed: "save failed: ",
     },
     sv: {
       answer: "Svara", correct: "Rätt!", wrong: "Fel.", newQuestion: "Ny fråga",
@@ -446,6 +451,11 @@
       myPage: "Min sida", pPage: "Sida", pSolved: "Rätt besvarade", pTotal: "Totalt",
       pSignIn: "Logga in för att se dina framsteg.", pNone: "Det finns inga frågor än.",
       pLoadFailed: "kunde inte laddas",
+      signInButton: "Logga in", signOut: "Logga ut", notSignedIn: "Inte inloggad",
+      savedPlot: "Sparat diagram", imageNotSaved: "(bilden sparades inte)",
+      plainData: "Data för {id}", plainSave: "Spara (PUT)", plainDelete: "Radera",
+      plainSignIn: "logga in för att ladda och spara", plainNothing: "inget sparat än", plainSaved: "sparat ",
+      plainSaving: "sparar …", plainLoadFailed: "kunde inte ladda: ", plainSaveFailed: "kunde inte spara: ",
     },
   };
   const t = (key) => (STRINGS[(cfg.lang || "en").slice(0, 2)] || STRINGS.en)[key];
@@ -1123,7 +1133,7 @@
   // `quiet` refreshes after a save or delete without flashing "loading…".
   async function loadProgress({ quiet = false, section = null } = {}) {
     if (widgets.size === 0) return;
-    if (!quiet) for (const w of widgets.values()) if (w.kind === "plain") setStatus(w, "loading…");
+    if (!quiet) for (const w of widgets.values()) if (w.kind === "plain") setStatus(w, t("loading"));
     try {
       section ??= await api("GET", sectionPath());
       const byId = new Map((section?.exercises || []).map((x) => [x.exerciseId, x]));
@@ -1132,20 +1142,20 @@
       if (orphans.length) console.info("[ipok] stored exercises not on this page:", orphans);
     } catch (e) {
       console.error("[ipok]", e);
-      for (const w of widgets.values()) setStatus(w, w.kind === "code" ? t("loadCodeFailed") + e.message : `load failed: ${e.message}`, "err");
+      for (const w of widgets.values()) setStatus(w, w.kind === "code" ? t("loadCodeFailed") + e.message : t("plainLoadFailed") + e.message, "err");
     }
   }
 
   async function save(w, exerciseData) {
     const code = w.kind === "code";
-    if (!code) setStatus(w, "saving…");
+    if (!code) setStatus(w, t("plainSaving"));
     try {
       await putRecord(w.id, exerciseData);
       if (code) setStatus(w, "");
       else await loadProgress({ quiet: true });
     } catch (e) {
       console.error("[ipok]", e);
-      setStatus(w, code ? t("saveCodeFailed") + e.message : `save failed: ${e.message}`, "err");
+      setStatus(w, code ? t("saveCodeFailed") + e.message : t("plainSaveFailed") + e.message, "err");
     }
   }
 
